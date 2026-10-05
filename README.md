@@ -107,6 +107,3 @@ Title: [Main Presentation Title]
 
 ---
 
-### SOURCE TEXT
-[PASTE YOUR SOURCE TEXT HERE]
-
