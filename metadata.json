@@ -1,0 +1,7 @@
+{
+  "name": "Code2PPT",
+  "description": "Turn simple presentation code into real, editable PowerPoint PPTX files right in your browser.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
