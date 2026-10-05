@@ -147,6 +147,7 @@ export type IssueSeverity = 'error' | 'warning' | 'info';
 export type IssueCode =
   | 'EMPTY_PRESENTATION'
   | 'MISSING_PRESENTATION_DECLARATION'
+  | 'MISSING_TITLE'
   | 'EMPTY_SLIDE'
   | 'INVALID_COMMAND'
   | 'INVALID_LAYOUT'

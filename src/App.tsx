@@ -1,16 +1,25 @@
 import { useState, useMemo, useCallback } from 'react';
 import { parsePresentation } from './parser/presentationParser';
+import { parseSimpleText } from './parser/simpleTextParser';
+import { parseBatchPresentations, serializeBatchPresentations } from './parser/batchParser';
 import { exportToPptxFile } from './renderer/pptxRenderer';
-import { DEFAULT_CODE } from './examples/samplePresentations';
+import { DEFAULT_CODE, DEFAULT_SIMPLE_TEXT, DEFAULT_BATCH_TEXT } from './examples/samplePresentations';
 import { Header } from './components/Header';
-import { Editor } from './components/Editor';
+import { Editor, InputMode } from './components/Editor';
 import { Preview } from './components/Preview';
 import { ValidationStatus } from './components/ValidationStatus';
 import { HelpModal } from './components/HelpModal';
 import { ThemeId } from './models/presentation';
 
 export default function App() {
+  const [inputMode, setInputMode] = useState<InputMode>('code');
   const [code, setCode] = useState<string>(DEFAULT_CODE);
+  const [simpleText, setSimpleText] = useState<string>(DEFAULT_SIMPLE_TEXT);
+  const [batchText, setBatchText] = useState<string>(DEFAULT_BATCH_TEXT);
+  const [selectedBatchIndex, setSelectedBatchIndex] = useState<number>(0);
+  const [isExportingAllBatch, setIsExportingAllBatch] = useState<boolean>(false);
+  const [batchExportProgress, setBatchExportProgress] = useState<{ current: number; total: number } | null>(null);
+
   const [activeSlideIndex, setActiveSlideIndex] = useState<number>(0);
   const [activeMobileTab, setActiveMobileTab] = useState<'editor' | 'preview'>('editor');
   const [isExporting, setIsExporting] = useState<boolean>(false);
@@ -18,12 +27,62 @@ export default function App() {
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
   const [activeLine, setActiveLine] = useState<number | null>(null);
 
-  // Parse code on every change
-  const parseResult = useMemo(() => {
-    return parsePresentation(code);
-  }, [code]);
+  // Active content based on mode
+  const currentContent =
+    inputMode === 'code' ? code : inputMode === 'simple-text' ? simpleText : batchText;
 
-  const { presentation, issues, hasErrors } = parseResult;
+  const handleContentChange = useCallback(
+    (value: string) => {
+      if (inputMode === 'code') {
+        setCode(value);
+      } else if (inputMode === 'simple-text') {
+        setSimpleText(value);
+      } else {
+        setBatchText(value);
+      }
+    },
+    [inputMode]
+  );
+
+  // Batch parse result memo
+  const batchResult = useMemo(() => {
+    return parseBatchPresentations(batchText);
+  }, [batchText]);
+
+  // Safe selected batch index
+  const safeBatchIndex = useMemo(() => {
+    if (batchResult.items.length === 0) return 0;
+    return Math.min(Math.max(0, selectedBatchIndex), batchResult.items.length - 1);
+  }, [batchResult.items.length, selectedBatchIndex]);
+
+  // Parse code, simple text, or batch on every change
+  const activeParseResult = useMemo(() => {
+    if (inputMode === 'batch') {
+      if (batchResult.items.length === 0) {
+        return {
+          presentation: {
+            title: 'Empty Batch',
+            theme: 'modern' as ThemeId,
+            slides: [],
+          },
+          issues: batchResult.issues,
+          hasErrors: batchResult.hasErrors,
+        };
+      }
+      const activeItem = batchResult.items[safeBatchIndex];
+      return {
+        presentation: activeItem.presentation,
+        issues: [...batchResult.issues, ...activeItem.issues],
+        hasErrors: activeItem.hasErrors || batchResult.hasErrors,
+      };
+    }
+    if (inputMode === 'simple-text') {
+      return parseSimpleText(simpleText);
+    }
+    return parsePresentation(code);
+  }, [inputMode, code, simpleText, batchResult, safeBatchIndex]);
+
+  const { presentation, issues, hasErrors } = activeParseResult;
 
   // Ensure activeSlideIndex stays in bounds
   const clampedSlideIndex = useMemo(() => {
@@ -35,27 +94,28 @@ export default function App() {
   // Handle theme changes from Header UI
   const handleThemeChange = useCallback(
     (newTheme: ThemeId) => {
-      // Check if theme command exists in code
-      const themeRegex = /^\s*theme\s+["']?([a-zA-Z0-9_-]+)["']?/m;
-      if (themeRegex.test(code)) {
-        const updated = code.replace(themeRegex, `theme "${newTheme}"`);
-        setCode(updated);
-      } else {
-        // Prepend or add after presentation line
-        const presentationRegex = /^(\s*presentation\s+["'][^"']*["'])/m;
-        if (presentationRegex.test(code)) {
-          const updated = code.replace(presentationRegex, `$1\ntheme "${newTheme}"`);
+      if (inputMode === 'code') {
+        const themeRegex = /^\s*theme\s+["']?([a-zA-Z0-9_-]+)["']?/m;
+        if (themeRegex.test(code)) {
+          const updated = code.replace(themeRegex, `theme "${newTheme}"`);
           setCode(updated);
         } else {
-          setCode(`theme "${newTheme}"\n\n${code}`);
+          const presentationRegex = /^(\s*presentation\s+["'][^"']*["'])/m;
+          if (presentationRegex.test(code)) {
+            const updated = code.replace(presentationRegex, `$1\ntheme "${newTheme}"`);
+            setCode(updated);
+          } else {
+            setCode(`theme "${newTheme}"\n\n${code}`);
+          }
         }
       }
     },
-    [code]
+    [inputMode, code]
   );
 
   // Load preset code
   const handleLoadPreset = useCallback((presetCode: string) => {
+    setInputMode('code');
     setCode(presetCode);
     setActiveSlideIndex(0);
     setActiveLine(null);
@@ -63,19 +123,112 @@ export default function App() {
 
   // Reset to default
   const handleReset = useCallback(() => {
-    setCode(DEFAULT_CODE);
+    if (inputMode === 'code') {
+      setCode(DEFAULT_CODE);
+    } else if (inputMode === 'simple-text') {
+      setSimpleText(DEFAULT_SIMPLE_TEXT);
+    } else {
+      setBatchText(DEFAULT_BATCH_TEXT);
+      setSelectedBatchIndex(0);
+    }
+    setActiveSlideIndex(0);
+    setActiveLine(null);
+  }, [inputMode]);
+
+  // Batch actions
+  const handleSelectBatchItem = useCallback((index: number) => {
+    setSelectedBatchIndex(index);
     setActiveSlideIndex(0);
     setActiveLine(null);
   }, []);
 
+  const handleMoveUpBatch = useCallback(
+    (index: number) => {
+      if (index <= 0 || index >= batchResult.items.length) return;
+      const reordered = [...batchResult.items];
+      const temp = reordered[index - 1];
+      reordered[index - 1] = reordered[index];
+      reordered[index] = temp;
+      const newText = serializeBatchPresentations(reordered);
+      setBatchText(newText);
+      setSelectedBatchIndex(index - 1);
+    },
+    [batchResult.items]
+  );
+
+  const handleMoveDownBatch = useCallback(
+    (index: number) => {
+      if (index < 0 || index >= batchResult.items.length - 1) return;
+      const reordered = [...batchResult.items];
+      const temp = reordered[index + 1];
+      reordered[index + 1] = reordered[index];
+      reordered[index] = temp;
+      const newText = serializeBatchPresentations(reordered);
+      setBatchText(newText);
+      setSelectedBatchIndex(index + 1);
+    },
+    [batchResult.items]
+  );
+
+  const handleRemoveBatch = useCallback(
+    (index: number) => {
+      const filtered = batchResult.items.filter((_, idx) => idx !== index);
+      const newText = serializeBatchPresentations(filtered);
+      setBatchText(newText);
+      if (selectedBatchIndex >= filtered.length) {
+        setSelectedBatchIndex(Math.max(0, filtered.length - 1));
+      }
+    },
+    [batchResult.items, selectedBatchIndex]
+  );
+
+  const handleExportSingleBatch = useCallback(
+    async (index: number) => {
+      const item = batchResult.items[index];
+      if (!item || item.presentation.slides.length === 0) return;
+      const fileName = item.presentation.title || `presentation_${index + 1}`;
+      await exportToPptxFile(item.presentation, {
+        fileName,
+        includeSlideNumbers: true,
+      });
+    },
+    [batchResult.items]
+  );
+
+  const handleExportAllBatch = useCallback(async () => {
+    const validItems = batchResult.items.filter(
+      (i) => !i.hasErrors && i.presentation.slides.length > 0
+    );
+    if (validItems.length === 0) return;
+
+    setIsExportingAllBatch(true);
+    setBatchExportProgress({ current: 0, total: validItems.length });
+
+    try {
+      for (let i = 0; i < validItems.length; i++) {
+        setBatchExportProgress({ current: i + 1, total: validItems.length });
+        const item = validItems[i];
+        const fileName = item.presentation.title || `presentation_${i + 1}`;
+        await exportToPptxFile(item.presentation, {
+          fileName,
+          includeSlideNumbers: true,
+        });
+        // Non-blocking browser download delay between files
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+    } finally {
+      setIsExportingAllBatch(false);
+      setBatchExportProgress(null);
+    }
+  }, [batchResult.items]);
+
   // Line selection from issues panel
   const handleSelectLine = useCallback((line: number) => {
     setActiveLine(line);
-    // Switch to editor tab on mobile
     setActiveMobileTab('editor');
   }, []);
 
-  // Export PPTX Handler
+  // Export PPTX Handler for currently active presentation
   const handleExport = useCallback(async () => {
     if (presentation.slides.length === 0) return;
 
@@ -131,11 +284,23 @@ export default function App() {
           }`}
         >
           <Editor
-            code={code}
-            onChange={setCode}
+            code={currentContent}
+            onChange={handleContentChange}
             issues={issues}
             activeLine={activeLine}
             onSelectLine={handleSelectLine}
+            mode={inputMode}
+            onModeChange={setInputMode}
+            batchItems={batchResult.items}
+            selectedBatchIndex={safeBatchIndex}
+            onSelectBatchItem={handleSelectBatchItem}
+            onMoveUpBatchItem={handleMoveUpBatch}
+            onMoveDownBatchItem={handleMoveDownBatch}
+            onRemoveBatchItem={handleRemoveBatch}
+            onExportSingleBatchItem={handleExportSingleBatch}
+            onExportAllBatchItems={handleExportAllBatch}
+            isExportingAllBatch={isExportingAllBatch}
+            batchExportProgress={batchExportProgress}
           />
         </section>
 
@@ -175,3 +340,4 @@ export default function App() {
     </div>
   );
 }
+

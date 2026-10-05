@@ -88,3 +88,56 @@ bullet "Deployable statically to GitHub Pages"`,
 ];
 
 export const DEFAULT_CODE = SAMPLE_PRESENTATIONS[0].code;
+
+export const DEFAULT_SIMPLE_TEXT = `Title: AI in Healthcare
+
+Applications
+- Medical diagnosis
+- Drug discovery
+- Patient monitoring
+
+Benefits
+- Faster analysis
+- Better decision support
+
+Clinical Impact
+Artificial intelligence algorithms now analyze clinical records and radiographic scans with superior consistency and speed.
+- Over 90% diagnostic agreement
+- Streamlined emergency triage`;
+
+export const DEFAULT_BATCH_TEXT = `PRESENTATION: 1
+TITLE: Biology Basics
+
+SLIDE: Introduction
+TEXT: Biology is the study of life and living organisms.
+
+SLIDE: Characteristics of Life
+BULLETS:
+- Growth and development
+- Reproduction
+- Cellular metabolism
+
+PRESENTATION: 2
+TITLE: Cell Biology
+
+SLIDE: Cell Structure
+TEXT: Cells contain specialized structures performing distinct functions.
+
+SLIDE: Organelles
+BULLETS:
+- Nucleus (genetic storage)
+- Mitochondria (cellular respiration)
+- Ribosomes (protein synthesis)
+
+PRESENTATION: 3
+TITLE: Genetics & DNA
+
+SLIDE: DNA Architecture
+TEXT: The double helix encodes hereditary instructions in nucleotide base pairs.
+
+SLIDE: Gene Expression
+BULLETS:
+- Transcription from DNA to mRNA
+- Translation at ribosomes
+- Epigenetic gene regulation`;
+
