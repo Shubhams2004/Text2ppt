@@ -31,6 +31,9 @@ interface EditorProps {
   onModeChange: (mode: InputMode) => void;
   // Batch specific props
   batchItems?: BatchPresentationItem[];
+  totalBatchDetected?: number;
+  batchLimitExceeded?: boolean;
+  batchLimitErrorMessage?: string;
   selectedBatchIndex?: number;
   onSelectBatchItem?: (index: number) => void;
   onMoveUpBatchItem?: (index: number) => void;
@@ -50,6 +53,9 @@ export const Editor: React.FC<EditorProps> = ({
   mode,
   onModeChange,
   batchItems = [],
+  totalBatchDetected,
+  batchLimitExceeded = false,
+  batchLimitErrorMessage,
   selectedBatchIndex = 0,
   onSelectBatchItem = () => {},
   onMoveUpBatchItem = () => {},
@@ -217,7 +223,10 @@ export const Editor: React.FC<EditorProps> = ({
               title="Batch Import (Multiple Presentations) Mode"
             >
               <Layers className="w-3.5 h-3.5 text-indigo-500" />
-              <span>Batch ({batchItems.length})</span>
+              <span>
+                Batch ({totalBatchDetected !== undefined ? totalBatchDetected : batchItems.length}
+                {batchLimitExceeded ? ' / 20 ⚠️' : ' / 20'})
+              </span>
             </button>
           </div>
 
@@ -379,6 +388,9 @@ export const Editor: React.FC<EditorProps> = ({
         <div className="flex-1 overflow-hidden flex flex-col">
           <BatchManager
             items={batchItems}
+            totalDetected={totalBatchDetected}
+            limitExceeded={batchLimitExceeded}
+            limitErrorMessage={batchLimitErrorMessage}
             selectedIndex={selectedBatchIndex}
             onSelect={onSelectBatchItem}
             onMoveUp={onMoveUpBatchItem}
@@ -410,57 +422,70 @@ export const Editor: React.FC<EditorProps> = ({
           />
         </div>
       ) : (
-        <div className="flex-1 relative flex overflow-hidden font-mono text-[13px] leading-relaxed">
-          {/* Line Numbers Gutter */}
-          <div
-            ref={gutterRef}
-            className="flex-none w-12 select-none overflow-hidden bg-slate-50/90 dark:bg-slate-950/60 border-r border-slate-200 dark:border-slate-800/80 py-3 text-right pr-2 text-slate-400 dark:text-slate-600"
-          >
-            {Array.from({ length: Math.max(lineCount, 1) }, (_, i) => {
-              const lineNum = i + 1;
-              const issue = issuesByLine.get(lineNum);
-              const isLineActive = activeLine === lineNum;
+        <div className="flex-1 relative flex flex-col overflow-hidden font-mono text-[13px] leading-relaxed">
+          {/* Limit Exceeded Banner in Source View */}
+          {mode === 'batch' && batchLimitExceeded && (
+            <div className="flex-none p-3 bg-rose-500/10 border-b border-rose-500/30 flex items-center gap-2 text-xs text-rose-800 dark:text-rose-200">
+              <AlertCircle className="w-4 h-4 flex-none text-rose-600 dark:text-rose-400" />
+              <span>
+                {batchLimitErrorMessage ||
+                  `Maximum 20 presentations per batch. Found ${totalBatchDetected}. Please reduce the batch to 20 or fewer.`}
+              </span>
+            </div>
+          )}
 
-              return (
-                <div
-                  key={lineNum}
-                  className={`h-[21px] flex items-center justify-end gap-1 ${
-                    isLineActive ? 'text-indigo-600 font-bold' : ''
-                  }`}
-                >
-                  {issue ? (
-                    issue.severity === 'error' ? (
-                      <AlertCircle className="w-3 h-3 text-rose-500 flex-none" />
-                    ) : (
-                      <AlertTriangle className="w-3 h-3 text-amber-500 flex-none" />
-                    )
-                  ) : null}
-                  <span className="text-[11px]">{lineNum}</span>
-                </div>
-              );
-            })}
+          <div className="flex-1 relative flex overflow-hidden">
+            {/* Line Numbers Gutter */}
+            <div
+              ref={gutterRef}
+              className="flex-none w-12 select-none overflow-hidden bg-slate-50/90 dark:bg-slate-950/60 border-r border-slate-200 dark:border-slate-800/80 py-3 text-right pr-2 text-slate-400 dark:text-slate-600"
+            >
+              {Array.from({ length: Math.max(lineCount, 1) }, (_, i) => {
+                const lineNum = i + 1;
+                const issue = issuesByLine.get(lineNum);
+                const isLineActive = activeLine === lineNum;
+
+                return (
+                  <div
+                    key={lineNum}
+                    className={`h-[21px] flex items-center justify-end gap-1 ${
+                      isLineActive ? 'text-indigo-600 font-bold' : ''
+                    }`}
+                  >
+                    {issue ? (
+                      issue.severity === 'error' ? (
+                        <AlertCircle className="w-3 h-3 text-rose-500 flex-none" />
+                      ) : (
+                        <AlertTriangle className="w-3 h-3 text-amber-500 flex-none" />
+                      )
+                    ) : null}
+                    <span className="text-[11px]">{lineNum}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Textarea */}
+            <textarea
+              ref={textareaRef}
+              value={code}
+              onChange={(e) => onChange(e.target.value)}
+              onScroll={handleScroll}
+              onKeyDown={handleKeyDown}
+              spellCheck={false}
+              autoCapitalize="off"
+              autoComplete="off"
+              autoCorrect="off"
+              className="flex-1 resize-none bg-transparent p-3 outline-none text-slate-900 dark:text-slate-100 selection:bg-indigo-100 dark:selection:bg-indigo-950/80 whitespace-pre font-mono overflow-y-auto leading-[21px]"
+              placeholder={
+                mode === 'code'
+                  ? `presentation "My Presentation"\n\nslide "Introduction"\ntext "Start typing your presentation code here..."`
+                  : mode === 'simple-text'
+                  ? `Title: AI in Healthcare\n\nApplications\n- Medical diagnosis\n- Drug discovery\n- Patient monitoring\n\nBenefits\n- Faster analysis\n- Better decision support`
+                  : `PRESENTATION: 1\nTITLE: Biology Basics\n\nSLIDE: Introduction\nTEXT: Biology is the study of life.\n\nSLIDE: Characteristics of Life\nBULLETS:\n- Growth\n- Reproduction\n\nPRESENTATION: 2\nTITLE: Cell Biology\n\nSLIDE: Cell Structure\nTEXT: Cells contain specialized organelles.`
+              }
+            />
           </div>
-
-          {/* Textarea */}
-          <textarea
-            ref={textareaRef}
-            value={code}
-            onChange={(e) => onChange(e.target.value)}
-            onScroll={handleScroll}
-            onKeyDown={handleKeyDown}
-            spellCheck={false}
-            autoCapitalize="off"
-            autoComplete="off"
-            autoCorrect="off"
-            className="flex-1 resize-none bg-transparent p-3 outline-none text-slate-900 dark:text-slate-100 selection:bg-indigo-100 dark:selection:bg-indigo-950/80 whitespace-pre font-mono overflow-y-auto leading-[21px]"
-            placeholder={
-              mode === 'code'
-                ? `presentation "My Presentation"\n\nslide "Introduction"\ntext "Start typing your presentation code here..."`
-                : mode === 'simple-text'
-                ? `Title: AI in Healthcare\n\nApplications\n- Medical diagnosis\n- Drug discovery\n- Patient monitoring\n\nBenefits\n- Faster analysis\n- Better decision support`
-                : `PRESENTATION: 1\nTITLE: Biology Basics\n\nSLIDE: Introduction\nTEXT: Biology is the study of life.\n\nSLIDE: Characteristics of Life\nBULLETS:\n- Growth\n- Reproduction\n\nPRESENTATION: 2\nTITLE: Cell Biology\n\nSLIDE: Cell Structure\nTEXT: Cells contain specialized organelles.`
-            }
-          />
         </div>
       )}
     </div>

@@ -146,6 +146,7 @@ export type IssueSeverity = 'error' | 'warning' | 'info';
 
 export type IssueCode =
   | 'EMPTY_PRESENTATION'
+  | 'BATCH_LIMIT_EXCEEDED'
   | 'MISSING_PRESENTATION_DECLARATION'
   | 'MISSING_TITLE'
   | 'EMPTY_SLIDE'

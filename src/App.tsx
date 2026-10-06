@@ -195,7 +195,13 @@ export default function App() {
     [batchResult.items]
   );
 
+  const isBatchLimitExceeded = batchResult.totalPresentations > 20;
+  const batchLimitIssue = batchResult.issues.find((i) => i.code === 'BATCH_LIMIT_EXCEEDED');
+
   const handleExportAllBatch = useCallback(async () => {
+    if (batchResult.totalPresentations > 20) {
+      return;
+    }
     const validItems = batchResult.items.filter(
       (i) => !i.hasErrors && i.presentation.slides.length > 0
     );
@@ -220,7 +226,7 @@ export default function App() {
       setIsExportingAllBatch(false);
       setBatchExportProgress(null);
     }
-  }, [batchResult.items]);
+  }, [batchResult.items, batchResult.totalPresentations]);
 
   // Line selection from issues panel
   const handleSelectLine = useCallback((line: number) => {
@@ -292,6 +298,9 @@ export default function App() {
             mode={inputMode}
             onModeChange={setInputMode}
             batchItems={batchResult.items}
+            totalBatchDetected={batchResult.totalPresentations}
+            batchLimitExceeded={isBatchLimitExceeded}
+            batchLimitErrorMessage={batchLimitIssue?.message}
             selectedBatchIndex={safeBatchIndex}
             onSelectBatchItem={handleSelectBatchItem}
             onMoveUpBatchItem={handleMoveUpBatch}

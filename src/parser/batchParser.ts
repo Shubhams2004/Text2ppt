@@ -53,23 +53,31 @@ const BATCH_HEADER_REGEX =
 /**
  * Explicit title line: TITLE: <title> or Title: <title>
  */
-const TITLE_LINE_REGEX = /^\s*(?:TITLE|PRESENTATION_TITLE)\s*:\s*(.+)$/i;
+const TITLE_LINE_REGEX = /^\s*(?:TITLE|PRESENTATION_TITLE)(?:\s*:\s*|\s+)(.+)$/i;
 
 /**
- * Explicit slide line: SLIDE: <title> or Slide: <title>
+ * Explicit slide line:
+ * - SLIDE: <title>
+ * - SLIDE 1: <title>
+ * - SLIDE 1 - <title>
+ * - SLIDE 1
+ * - SLIDE <title>
+ * - HEADING: <title>
+ * - HEADING <title>
  */
-const SLIDE_LINE_REGEX = /^\s*(?:SLIDE|HEADING)\s*:\s*(.*)$/i;
+const SLIDE_LINE_REGEX =
+  /^\s*(?:SLIDE|HEADING)(?:\s+\d+\s*[:.-]|\s*:\s*|\s+\d+\s*$|\s+)(.*)$/i;
 
 /**
  * Explicit text line: TEXT: <content> or Text: <content>
  */
-const TEXT_LINE_REGEX = /^\s*(?:TEXT|P|PARAGRAPH)\s*:\s*(.*)$/i;
+const TEXT_LINE_REGEX = /^\s*(?:TEXT|P|PARAGRAPH)(?:\s*:\s*|\s+)(.*)$/i;
 
 /**
  * Explicit bullet marker or BULLET: line
  */
-const BULLET_LINE_REGEX = /^\s*(?:BULLET)\s*:\s*(.*)$/i;
-const BULLETS_SECTION_REGEX = /^\s*(?:BULLETS|POINTS)\s*:\s*$/i;
+const BULLET_LINE_REGEX = /^\s*(?:BULLET)(?:\s*:\s*|\s+)(.*)$/i;
+const BULLETS_SECTION_REGEX = /^\s*(?:BULLETS|POINTS)(?:\s*:\s*|\s*$)/i;
 
 /**
  * Standard bullet list markers
@@ -232,7 +240,11 @@ function parseSingleBatchChunk(
     // Slide line: SLIDE: <title>
     const slideMatch = trimmed.match(SLIDE_LINE_REGEX);
     if (slideMatch) {
-      const slideTitle = slideMatch[1].trim() || `Slide ${slides.length + 1}`;
+      let slideTitle = slideMatch[1].replace(/^["']|["']$/g, '').trim();
+      if (!slideTitle) {
+        const numMatch = trimmed.match(/^\s*(?:SLIDE|HEADING)\s+(\d+)/i);
+        slideTitle = numMatch ? `Slide ${numMatch[1]}` : `Slide ${slides.length + 1}`;
+      }
       createSlide(slideTitle, absLine);
       continue;
     }
@@ -470,6 +482,29 @@ export function parseBatchPresentations(batchText: string): BatchParseResult {
         lineIndex: 0,
       });
     }
+  }
+
+  const presentationCount = boundaries.length;
+
+  // Hard limit: Maximum 20 presentations per batch
+  if (presentationCount > 20) {
+    const errorLine = boundaries[20]?.startLine || 1;
+    globalIssues.push({
+      line: errorLine,
+      code: 'BATCH_LIMIT_EXCEEDED',
+      message: `Maximum 20 presentations per batch. Found ${presentationCount}. Please reduce the batch to 20 or fewer.`,
+      severity: 'error',
+      suggestion: 'Please reduce the batch to 20 or fewer presentations.',
+    });
+
+    return {
+      items: [],
+      issues: globalIssues,
+      hasErrors: true,
+      totalPresentations: presentationCount,
+      validCount: 0,
+      errorCount: presentationCount,
+    };
   }
 
   // 3. Slice text into chunks and parse each

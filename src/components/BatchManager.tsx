@@ -16,6 +16,9 @@ import { BatchPresentationItem } from '../parser/batchParser';
 
 interface BatchManagerProps {
   items: BatchPresentationItem[];
+  totalDetected?: number;
+  limitExceeded?: boolean;
+  limitErrorMessage?: string;
   selectedIndex: number;
   onSelect: (index: number) => void;
   onMoveUp: (index: number) => void;
@@ -30,6 +33,9 @@ interface BatchManagerProps {
 
 export const BatchManager: React.FC<BatchManagerProps> = ({
   items,
+  totalDetected,
+  limitExceeded = false,
+  limitErrorMessage,
   selectedIndex,
   onSelect,
   onMoveUp,
@@ -41,21 +47,59 @@ export const BatchManager: React.FC<BatchManagerProps> = ({
   isExportingAll,
   exportProgress,
 }) => {
+  const count = totalDetected !== undefined ? totalDetected : items.length;
+  const isApproachingLimit = count >= 18 && count <= 20;
+  const isOverLimit = count > 20 || limitExceeded;
+
   const validCount = items.filter((i) => !i.hasErrors).length;
   const errorCount = items.filter((i) => i.hasErrors).length;
 
   return (
     <div className="flex flex-col h-full bg-slate-50/50 dark:bg-slate-900/50 overflow-hidden">
+      {/* Limit Exceeded Banner */}
+      {isOverLimit && (
+        <div className="flex-none p-3.5 bg-rose-500/10 border-b border-rose-500/30 flex items-start gap-2.5 text-xs text-rose-800 dark:text-rose-200 animate-in fade-in duration-150">
+          <AlertTriangle className="w-4 h-4 flex-none text-rose-600 dark:text-rose-400 mt-0.5" />
+          <div className="min-w-0">
+            <strong className="font-semibold block">Batch limit exceeded:</strong>
+            <span>
+              {limitErrorMessage ||
+                `Maximum 20 presentations per batch. Found ${count}. Please reduce the batch to 20 or fewer.`}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Batch Stats & Bulk Export Header */}
       <div className="flex-none p-3.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-xs text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
             <Layers className="w-4 h-4 text-indigo-500" />
-            Batch Queue ({items.length})
+            <span
+              className={
+                isOverLimit
+                  ? 'text-rose-600 font-bold'
+                  : isApproachingLimit
+                  ? 'text-amber-600 font-bold'
+                  : ''
+              }
+            >
+              {count} / 20 presentations
+            </span>
           </span>
-          <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60">
-            {validCount} Ready
-          </span>
+
+          {isApproachingLimit && (
+            <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60">
+              Approaching 20 deck limit
+            </span>
+          )}
+
+          {!isOverLimit && validCount > 0 && (
+            <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60">
+              {validCount} Ready
+            </span>
+          )}
+
           {errorCount > 0 && (
             <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/60">
               {errorCount} Issues
@@ -66,9 +110,13 @@ export const BatchManager: React.FC<BatchManagerProps> = ({
         {/* Export All Action */}
         <button
           onClick={onExportAll}
-          disabled={isExportingAll || validCount === 0}
+          disabled={isExportingAll || validCount === 0 || isOverLimit}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed"
-          title="Download all presentations as separate .pptx files"
+          title={
+            isOverLimit
+              ? `Export disabled: Maximum 20 presentations per batch. Found ${count}.`
+              : 'Download all presentations as separate .pptx files'
+          }
         >
           {isExportingAll ? (
             <>

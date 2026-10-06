@@ -400,4 +400,187 @@ SLIDE: S2
     assert.equal(reparsed.items[0].presentation.title, 'Second');
     assert.equal(reparsed.items[1].presentation.title, 'First');
   });
+
+  // --- Tests for Batch Limit (Hard Maximum of 20) & Slide-Count Reliability ---
+
+  // 16. Exactly 1 presentation
+  it('parses a single presentation in batch format successfully', () => {
+    const input = `PRESENTATION: 1
+TITLE: Solo Deck
+SLIDE: Slide 1
+TEXT: Just one presentation.`;
+
+    const result = parseBatchPresentations(input);
+    assert.equal(result.hasErrors, false);
+    assert.equal(result.totalPresentations, 1);
+    assert.equal(result.items.length, 1);
+    assert.equal(result.items[0].presentation.title, 'Solo Deck');
+    assert.equal(result.items[0].presentation.slides.length, 1);
+  });
+
+  // 17. Exactly 20 presentations -> valid
+  it('accepts exactly 20 presentations as valid without error', () => {
+    const decks: string[] = [];
+    for (let i = 1; i <= 20; i++) {
+      decks.push(`PRESENTATION: ${i}
+TITLE: Batch Deck ${i}
+SLIDE: Slide 1
+TEXT: Content for presentation ${i}`);
+    }
+    const result = parseBatchPresentations(decks.join('\n\n'));
+    assert.equal(result.hasErrors, false);
+    assert.equal(result.totalPresentations, 20);
+    assert.equal(result.items.length, 20);
+    assert.equal(result.validCount, 20);
+    assert.equal(result.errorCount, 0);
+  });
+
+  // 18. 21 presentations -> rejected with BATCH_LIMIT_EXCEEDED
+  it('rejects 21 presentations with exact error reporting count 21 and does not partially process', () => {
+    const decks: string[] = [];
+    for (let i = 1; i <= 21; i++) {
+      decks.push(`PRESENTATION: ${i}
+TITLE: Batch Deck ${i}
+SLIDE: Slide 1
+TEXT: Content for presentation ${i}`);
+    }
+    const result = parseBatchPresentations(decks.join('\n\n'));
+    assert.equal(result.hasErrors, true);
+    assert.equal(result.totalPresentations, 21);
+    assert.equal(result.items.length, 0, 'Must not partially process batch when exceeding limit');
+    assert.equal(result.errorCount, 21);
+    const limitIssue = result.issues.find((iss) => iss.code === 'BATCH_LIMIT_EXCEEDED');
+    assert.ok(limitIssue, 'Must contain BATCH_LIMIT_EXCEEDED issue');
+    assert.equal(
+      limitIssue.message,
+      'Maximum 20 presentations per batch. Found 21. Please reduce the batch to 20 or fewer.'
+    );
+  });
+
+  // 19. 25 presentations -> rejected with exact count 25
+  it('rejects 25 presentations reporting exact count 25', () => {
+    const decks: string[] = [];
+    for (let i = 1; i <= 25; i++) {
+      decks.push(`PRESENTATION: ${i}
+TITLE: Batch Deck ${i}
+SLIDE: Slide 1
+TEXT: Content for presentation ${i}`);
+    }
+    const result = parseBatchPresentations(decks.join('\n\n'));
+    assert.equal(result.hasErrors, true);
+    assert.equal(result.totalPresentations, 25);
+    assert.equal(result.items.length, 0);
+    const limitIssue = result.issues.find((iss) => iss.code === 'BATCH_LIMIT_EXCEEDED');
+    assert.ok(limitIssue);
+    assert.equal(
+      limitIssue.message,
+      'Maximum 20 presentations per batch. Found 25. Please reduce the batch to 20 or fewer.'
+    );
+  });
+
+  // 20. Exact 3-slide reliability test across Parser, Model, and PPTX Export
+  it('produces exactly 3 slides for 3-slide input across batch, simple text, code2ppt and PPTX export', async () => {
+    const input = `PRESENTATION: 1
+TITLE: Test Presentation
+
+SLIDE: Slide 1
+TEXT: Content 1
+
+SLIDE: Slide 2
+TEXT: Content 2
+
+SLIDE: Slide 3
+TEXT: Content 3`;
+
+    // 1. Batch Parser
+    const batchRes = parseBatchPresentations(input);
+    assert.equal(batchRes.hasErrors, false);
+    assert.equal(batchRes.items.length, 1);
+    const model = batchRes.items[0].presentation;
+    assert.equal(model.slides.length, 3, 'Model must contain exactly 3 slides');
+    assert.equal(model.slides[0].title, 'Slide 1');
+    assert.equal(model.slides[1].title, 'Slide 2');
+    assert.equal(model.slides[2].title, 'Slide 3');
+    assert.equal(model.slides[2].elements[0].content, 'Content 3', 'Final slide content must be preserved');
+
+    // 2. Simple Text Parser
+    const simpleRes = parseSimpleText(input);
+    assert.equal(simpleRes.presentation.slides.length, 3, 'Simple text mode must produce exactly 3 slides');
+    assert.equal(simpleRes.presentation.slides[0].title, 'Slide 1');
+    assert.equal(simpleRes.presentation.slides[1].title, 'Slide 2');
+    assert.equal(simpleRes.presentation.slides[2].title, 'Slide 3');
+
+    // 3. Code2PPT Parser
+    const dslRes = parsePresentation(input);
+    assert.equal(dslRes.presentation.slides.length, 3, 'Code2PPT mode must produce exactly 3 slides');
+    assert.equal(dslRes.presentation.slides[0].title, 'Slide 1');
+    assert.equal(dslRes.presentation.slides[1].title, 'Slide 2');
+    assert.equal(dslRes.presentation.slides[2].title, 'Slide 3');
+
+    // 4. PPTX Generator
+    const pptx = buildPptxPresentation(model);
+    assert.ok(pptx);
+    const b64 = await pptx.write({ outputType: 'base64' });
+    assert.ok(typeof b64 === 'string' && b64.length > 5000, 'PPTX export must succeed with 3 slides');
+  });
+
+  // 21. Final slide is never lost (unlabeled, bullets, or trailing newlines)
+  it('ensures final slide is never lost regardless of content type or trailing whitespace', () => {
+    const input = `PRESENTATION: 1
+TITLE: Final Slide Retention
+
+SLIDE: Slide 1
+TEXT: Body 1
+
+SLIDE: Slide 2
+TEXT: Body 2
+
+SLIDE: Final Slide 3
+BULLETS:
+- Final bullet point alpha
+- Final bullet point beta
+
+
+`;
+
+    const result = parseBatchPresentations(input);
+    assert.equal(result.hasErrors, false);
+    const slides = result.items[0].presentation.slides;
+    assert.equal(slides.length, 3);
+    assert.equal(slides[2].title, 'Final Slide 3');
+    assert.equal(slides[2].elements.length, 2);
+    assert.equal(slides[2].elements[0].content, 'Final bullet point alpha');
+    assert.equal(slides[2].elements[1].content, 'Final bullet point beta');
+  });
+
+  // 22. Slide count regressions: 2, 3, 5, 10 slides
+  it('reliably produces exact slide counts for 2, 3, 5, and 10 slide presentations', () => {
+    const makeDeck = (count: number) => {
+      const parts = [`PRESENTATION: 1`, `TITLE: ${count}-Slide Deck`];
+      for (let s = 1; s <= count; s++) {
+        parts.push(`SLIDE: Slide ${s}\nTEXT: Content for slide ${s}`);
+      }
+      return parts.join('\n\n');
+    };
+
+    // 2 slides
+    const res2 = parseBatchPresentations(makeDeck(2));
+    assert.equal(res2.items[0].presentation.slides.length, 2);
+    assert.equal(res2.items[0].presentation.slides[1].title, 'Slide 2');
+
+    // 3 slides
+    const res3 = parseBatchPresentations(makeDeck(3));
+    assert.equal(res3.items[0].presentation.slides.length, 3);
+    assert.equal(res3.items[0].presentation.slides[2].title, 'Slide 3');
+
+    // 5 slides
+    const res5 = parseBatchPresentations(makeDeck(5));
+    assert.equal(res5.items[0].presentation.slides.length, 5);
+    assert.equal(res5.items[0].presentation.slides[4].title, 'Slide 5');
+
+    // 10 slides
+    const res10 = parseBatchPresentations(makeDeck(10));
+    assert.equal(res10.items[0].presentation.slides.length, 10);
+    assert.equal(res10.items[0].presentation.slides[9].title, 'Slide 10');
+  });
 });

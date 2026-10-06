@@ -34,9 +34,12 @@ export function extractKeywordAndArgument(line: string): ExtractedToken | null {
   const firstSpaceIdx = trimmed.search(/\s/);
   if (firstSpaceIdx === -1) {
     // Only a keyword with no argument
+    let kw = trimmed.toLowerCase().replace(/:+$/, '');
+    if (kw === 'title') kw = 'presentation';
+    else if (kw === 'bullets') kw = 'bullet';
     return {
       rawKeyword: trimmed,
-      keyword: trimmed.toLowerCase(),
+      keyword: kw,
       argument: '',
       hasQuotes: false,
       unclosedQuote: false,
@@ -46,7 +49,12 @@ export function extractKeywordAndArgument(line: string): ExtractedToken | null {
   }
 
   const rawKeyword = trimmed.slice(0, firstSpaceIdx);
-  const keyword = rawKeyword.toLowerCase();
+  let keyword = rawKeyword.toLowerCase().replace(/:+$/, '');
+  if (keyword === 'title') {
+    keyword = 'presentation';
+  } else if (keyword === 'bullets') {
+    keyword = 'bullet';
+  }
   const rest = trimmed.slice(firstSpaceIdx).trim();
 
   if (!rest) {

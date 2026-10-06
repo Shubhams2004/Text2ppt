@@ -26,9 +26,14 @@ const BULLET_REGEX = /^\s*(?:[-•·*+–—]|\d+[.)])\s+(.*)$/u;
 const TITLE_PREFIX_REGEX = /^(?:title|presentation)\s*:\s*(.+)$/i;
 
 /**
- * Explicit slide prefixes
+ * Explicit slide prefixes:
+ * - Slide: <title>
+ * - Slide 1: <title>
+ * - Slide 1
+ * - Heading: <title>
  */
-const SLIDE_PREFIX_REGEX = /^(?:slide|heading)\s*:\s*(.+)$/i;
+const SLIDE_PREFIX_REGEX =
+  /^(?:slide|heading)(?:\s+\d+\s*[:.-]|\s*:\s*|\s+\d+\s*$|\s+)(.*)$/i;
 
 /**
  * Markdown heading prefixes
@@ -99,7 +104,12 @@ export function parseSimpleText(rawText: string): ParseResult {
 
     const titleMatch = trimmed.match(TITLE_PREFIX_REGEX);
     if (titleMatch) {
-      presentationTitle = titleMatch[1].trim();
+      const candidate = titleMatch[1].trim();
+      // If it's a batch deck number like "1", look ahead for an explicit TITLE: line
+      if (/^\d+$/.test(candidate) && /^presentation\s*:/i.test(trimmed)) {
+        continue;
+      }
+      presentationTitle = candidate;
       presentationTitleLine = i + 1;
       break;
     }
@@ -172,6 +182,17 @@ export function parseSimpleText(rawText: string): ParseResult {
       continue;
     }
 
+    // Skip redundant Presentation batch header: PRESENTATION: 1
+    if (/^\s*presentation(?:\s*:\s*|\s+)\d+$/i.test(trimmed)) {
+      continue;
+    }
+
+    // Skip section header: BULLETS:
+    if (/^\s*(?:bullets|points)\s*:\s*$/i.test(trimmed)) {
+      flushPendingText();
+      continue;
+    }
+
     // Skip explicit presentation title line if already captured
     if (lineNum === presentationTitleLine && presentationTitle) {
       const isTitlePrefix = TITLE_PREFIX_REGEX.test(trimmed) || MD_H1_REGEX.test(trimmed);
@@ -180,10 +201,15 @@ export function parseSimpleText(rawText: string): ParseResult {
       }
     }
 
-    // Check for explicit slide prefix: "Slide: ..." or "## ..."
+    // Check for explicit slide prefix: "Slide: ...", "Slide 1: ...", or "## ..."
     const explicitSlideMatch = trimmed.match(SLIDE_PREFIX_REGEX) || trimmed.match(MD_H2_REGEX);
     if (explicitSlideMatch) {
-      createSlide(explicitSlideMatch[1], lineNum);
+      let slideTitle = explicitSlideMatch[1].replace(/^["']|["']$/g, '').trim();
+      if (!slideTitle) {
+        const numMatch = trimmed.match(/^\s*(?:slide|heading)\s+(\d+)/i);
+        slideTitle = numMatch ? `Slide ${numMatch[1]}` : `Slide ${slides.length + 1}`;
+      }
+      createSlide(slideTitle, lineNum);
       firstHeadingFound = true;
       continue;
     }
@@ -265,7 +291,11 @@ export function parseSimpleText(rawText: string): ParseResult {
     if (pendingTextLines.length === 0) {
       pendingTextStartLine = lineNum;
     }
-    pendingTextLines.push(trimmed);
+    let textLine = trimmed;
+    if (/^(?:text|p|paragraph)\s*:\s*/i.test(textLine)) {
+      textLine = textLine.replace(/^(?:text|p|paragraph)\s*:\s*/i, '').trim();
+    }
+    pendingTextLines.push(textLine);
   }
 
   // Flush any remaining text buffer
