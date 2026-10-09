@@ -2,6 +2,7 @@ import pptxgen from 'pptxgenjs';
 import { Presentation, Slide } from '../models/presentation';
 import { getTheme, THEMES } from '../themes/presentationThemes';
 import {
+  autoPaginatePresentation,
   computeSlideLayout,
   ComputedSlideLayout,
   DEFAULT_LAYOUT_CONFIG,
@@ -29,19 +30,22 @@ export function buildPptxPresentation(
   presentation: Presentation,
   options: ExportOptions = {}
 ): pptxgen {
+  // Auto-paginate presentation so overflowing slides are automatically assigned to next slides
+  // without text compression or deletion
+  const paginated = autoPaginatePresentation(presentation);
   const pres = new pptxgen();
-  const theme = THEMES[presentation.theme] || getTheme(presentation.theme);
+  const theme = THEMES[paginated.theme] || getTheme(paginated.theme);
 
   // Configure 16:9 widescreen presentation layout (10 x 5.625 inches)
   pres.layout = 'LAYOUT_16x9';
-  pres.title = presentation.title || 'Code2PPT Presentation';
+  pres.title = paginated.title || 'Code2PPT Presentation';
   pres.author = 'Code2PPT';
   pres.company = 'Code2PPT';
-  pres.subject = presentation.title;
+  pres.subject = paginated.title;
 
-  const totalSlides = presentation.slides.length;
+  const totalSlides = paginated.slides.length;
 
-  presentation.slides.forEach((slideData: Slide, index: number) => {
+  paginated.slides.forEach((slideData: Slide, index: number) => {
     const slide = pres.addSlide();
 
     // Slide background
@@ -52,7 +56,7 @@ export function buildPptxPresentation(
       slideData,
       index,
       totalSlides,
-      presentation.title
+      paginated.title
     );
 
     if (layout.layoutType === 'title') {
@@ -65,7 +69,7 @@ export function buildPptxPresentation(
 
     // Slide footer (preserves presentation title & slide numbering)
     if (options.includeSlideNumbers !== false && layout.footer.show) {
-      renderFooter(slide, presentation.title, index + 1, totalSlides, layout);
+      renderFooter(slide, paginated.title, index + 1, totalSlides, layout);
     }
   });
 
@@ -382,12 +386,31 @@ export async function exportToPptxFile(
   options: ExportOptions = {}
 ): Promise<{ success: boolean; fileName: string; error?: string }> {
   try {
-    const pres = buildPptxPresentation(presentation, options);
-    const rawName = options.fileName || presentation.title || 'presentation';
+    const paginated = autoPaginatePresentation(presentation);
+    const pres = buildPptxPresentation(paginated, options);
+    const rawName = options.fileName || paginated.title || 'presentation';
     const cleanName = `${sanitizeFileName(rawName)}.pptx`;
 
-    // In browser environments, writeFile initiates the native download
-    await pres.writeFile({ fileName: cleanName });
+    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+      // In browser / iframe environment: write blob directly and trigger download via anchor
+      const blob = (await pres.write({ outputType: 'blob' })) as Blob;
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = blobUrl;
+      a.download = cleanName;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        if (a.parentNode) {
+          a.parentNode.removeChild(a);
+        }
+        window.URL.revokeObjectURL(blobUrl);
+      }, 1000);
+    } else {
+      // In Node.js environment
+      await pres.writeFile({ fileName: cleanName });
+    }
 
     return { success: true, fileName: cleanName };
   } catch (err: unknown) {

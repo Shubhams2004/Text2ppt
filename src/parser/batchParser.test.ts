@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { parseBatchPresentations, serializeBatchPresentations } from './batchParser';
+import {
+  parseBatchPresentations,
+  serializeBatchPresentations,
+  countPresentationDeclarations,
+} from './batchParser';
 import { parsePresentation } from './presentationParser';
 import { parseSimpleText } from './simpleTextParser';
 import { buildPptxPresentation } from '../renderer/pptxRenderer';
@@ -582,5 +586,486 @@ BULLETS:
     const res10 = parseBatchPresentations(makeDeck(10));
     assert.equal(res10.items[0].presentation.slides.length, 10);
     assert.equal(res10.items[0].presentation.slides[9].title, 'Slide 10');
+  });
+
+  // 23. Regression: Exactly 1 presentation produces 1 presentation in batch queue
+  it('reliably detects and retains exactly 1 presentation in batch queue', () => {
+    const input = `PRESENTATION: 1
+TITLE: Solo Presentation
+
+SLIDE: Opening Slide
+TEXT: Content for the single presentation.
+- Key point alpha
+- Key point beta`;
+
+    const result = parseBatchPresentations(input);
+    assert.equal(result.hasErrors, false);
+    assert.equal(result.totalPresentations, 1);
+    assert.equal(result.items.length, 1);
+    assert.equal(result.items[0].presentation.title, 'Solo Presentation');
+    assert.equal(result.items[0].presentation.slides.length, 1);
+  });
+
+  // 24. Regression: Exactly 2 presentations produces 2 presentations in batch queue
+  it('reliably detects and retains exactly 2 presentations in batch queue', () => {
+    const input = `PRESENTATION: 1
+TITLE: First Deck
+SLIDE: S1
+TEXT: Content 1
+
+PRESENTATION: 2
+TITLE: Second Deck
+SLIDE: S2
+TEXT: Content 2`;
+
+    const result = parseBatchPresentations(input);
+    assert.equal(result.hasErrors, false);
+    assert.equal(result.totalPresentations, 2);
+    assert.equal(result.items.length, 2);
+    assert.equal(result.items[0].presentation.title, 'First Deck');
+    assert.equal(result.items[1].presentation.title, 'Second Deck');
+  });
+
+  // 25. Regression: Exactly 3 presentations retains ALL 3, queue contains 3, preview selects 1, 2, 3, and export all succeeds
+  it('reliably detects and retains all 3 presentations, allowing preview and export of each', async () => {
+    const input = `PRESENTATION: 1
+TITLE: Presentation Alpha
+SLIDE: Slide A1
+TEXT: Body content for alpha deck.
+- Bullet A1
+
+PRESENTATION: 2
+TITLE: Presentation Beta
+SLIDE: Slide B1
+TEXT: Body content for beta deck.
+- Bullet B1
+
+PRESENTATION: 3
+TITLE: Presentation Gamma
+SLIDE: Slide C1
+TEXT: Body content for gamma deck.
+- Bullet C1`;
+
+    const result = parseBatchPresentations(input);
+
+    // 1. Boundary & count assertions: no presentation lost
+    assert.equal(result.hasErrors, false);
+    assert.equal(result.totalPresentations, 3);
+    assert.equal(result.items.length, 3, 'Batch queue must contain exactly 3 presentations');
+    assert.equal(result.validCount, 3);
+    assert.equal(result.errorCount, 0);
+
+    // 2. Individual presentation model assertions
+    const p1 = result.items[0].presentation;
+    const p2 = result.items[1].presentation;
+    const p3 = result.items[2].presentation;
+
+    assert.equal(p1.title, 'Presentation Alpha');
+    assert.equal(p1.slides.length, 1);
+    assert.equal(p1.slides[0].title, 'Slide A1');
+
+    assert.equal(p2.title, 'Presentation Beta');
+    assert.equal(p2.slides.length, 1);
+    assert.equal(p2.slides[0].title, 'Slide B1');
+
+    assert.equal(p3.title, 'Presentation Gamma');
+    assert.equal(p3.slides.length, 1);
+    assert.equal(p3.slides[0].title, 'Slide C1');
+    assert.equal(p3.slides[0].elements[0].content, 'Body content for gamma deck.');
+
+    // 3. Verify Preview selection (simulation of selectedBatchIndex 0, 1, and 2)
+    const selectForPreview = (index: number) => {
+      const safeIndex = Math.min(Math.max(0, index), result.items.length - 1);
+      return result.items[safeIndex].presentation;
+    };
+
+    assert.equal(selectForPreview(0).title, 'Presentation Alpha', 'Preview must display presentation 1');
+    assert.equal(selectForPreview(1).title, 'Presentation Beta', 'Preview must display presentation 2');
+    assert.equal(selectForPreview(2).title, 'Presentation Gamma', 'Preview must display presentation 3');
+
+    // 4. Verify Export All: all 3 can be converted into valid PPTX presentations separately
+    const pptxAlpha = buildPptxPresentation(p1);
+    const pptxBeta = buildPptxPresentation(p2);
+    const pptxGamma = buildPptxPresentation(p3);
+
+    const [b64_1, b64_2, b64_3] = await Promise.all([
+      pptxAlpha.write({ outputType: 'base64' }),
+      pptxBeta.write({ outputType: 'base64' }),
+      pptxGamma.write({ outputType: 'base64' }),
+    ]);
+
+    assert.ok(typeof b64_1 === 'string' && b64_1.length > 1000);
+    assert.ok(typeof b64_2 === 'string' && b64_2.length > 1000);
+    assert.ok(typeof b64_3 === 'string' && b64_3.length > 1000);
+  });
+
+  // 26. Regression: 3 presentations in various alternative formatting styles
+  it('detects 3 presentations across diverse header variants without dropping the 3rd block', () => {
+    // A: Unnumbered PRESENTATION / PRESENTATION: headers
+    const inputUnnumbered = `PRESENTATION:
+TITLE: First Unnumbered
+SLIDE: S1
+TEXT: C1
+
+PRESENTATION:
+TITLE: Second Unnumbered
+SLIDE: S2
+TEXT: C2
+
+PRESENTATION
+TITLE: Third Unnumbered
+SLIDE: S3
+TEXT: C3`;
+    const resA = parseBatchPresentations(inputUnnumbered);
+    assert.equal(resA.items.length, 3, 'Must detect 3 unnumbered presentations');
+    assert.equal(resA.items[2].presentation.title, 'Third Unnumbered');
+
+    // B: Markdown headings (# PRESENTATION 1, ## PRESENTATION 2, ### PRESENTATION 3)
+    const inputMarkdown = `# PRESENTATION 1
+TITLE: Markdown Deck 1
+SLIDE: S1
+TEXT: C1
+
+## PRESENTATION 2
+TITLE: Markdown Deck 2
+SLIDE: S2
+TEXT: C2
+
+### PRESENTATION 3
+TITLE: Markdown Deck 3
+SLIDE: S3
+TEXT: C3`;
+    const resB = parseBatchPresentations(inputMarkdown);
+    assert.equal(resB.items.length, 3, 'Must detect 3 markdown presentations');
+    assert.equal(resB.items[2].presentation.title, 'Markdown Deck 3');
+
+    // C: DECK keyword headers
+    const inputDeck = `DECK: 1
+TITLE: Deck One
+SLIDE: S1
+TEXT: C1
+
+DECK 2
+TITLE: Deck Two
+SLIDE: S2
+TEXT: C2
+
+DECK: 3
+TITLE: Deck Three
+SLIDE: S3
+TEXT: C3`;
+    const resC = parseBatchPresentations(inputDeck);
+    assert.equal(resC.items.length, 3, 'Must detect 3 presentations using DECK keyword');
+    assert.equal(resC.items[2].presentation.title, 'Deck Three');
+
+    // D: Numbered and bulleted lists of presentations
+    const inputList = `1. PRESENTATION: 1
+TITLE: List Deck 1
+SLIDE: S1
+TEXT: C1
+
+2. PRESENTATION: 2
+TITLE: List Deck 2
+SLIDE: S2
+TEXT: C2
+
+3. PRESENTATION: 3
+TITLE: List Deck 3
+SLIDE: S3
+TEXT: C3`;
+    const resD = parseBatchPresentations(inputList);
+    assert.equal(resD.items.length, 3, 'Must detect 3 presentations in numbered list');
+    assert.equal(resD.items[2].presentation.title, 'List Deck 3');
+  });
+
+  // 27. Regression: Confirmation that exactly 20 is accepted and 21 is rejected
+  it('verifies boundary limits: exactly 20 is accepted and 21 is strictly rejected', () => {
+    const makeDecks = (count: number) => {
+      const arr: string[] = [];
+      for (let i = 1; i <= count; i++) {
+        arr.push(`PRESENTATION: ${i}
+TITLE: Batch Item ${i}
+SLIDE: Slide 1
+TEXT: Slide content for presentation ${i}`);
+      }
+      return arr.join('\n\n');
+    };
+
+    // Exactly 20
+    const res20 = parseBatchPresentations(makeDecks(20));
+    assert.equal(res20.hasErrors, false, '20 presentations must not have errors');
+    assert.equal(res20.totalPresentations, 20);
+    assert.equal(res20.items.length, 20, '20 presentations must all be retained');
+    assert.equal(res20.validCount, 20);
+    assert.equal(res20.errorCount, 0);
+
+    // Exactly 21
+    const res21 = parseBatchPresentations(makeDecks(21));
+    assert.equal(res21.hasErrors, true, '21 presentations must be rejected');
+    assert.equal(res21.totalPresentations, 21);
+    assert.equal(res21.items.length, 0, '21 presentations must not be partially processed');
+    assert.equal(res21.validCount, 0);
+    assert.equal(res21.errorCount, 21);
+    const limitIssue = res21.issues.find((i) => i.code === 'BATCH_LIMIT_EXCEEDED');
+    assert.ok(limitIssue, 'Must produce BATCH_LIMIT_EXCEEDED issue');
+    assert.equal(
+      limitIssue.message,
+      'Maximum 20 presentations per batch. Found 21. Please reduce the batch to 20 or fewer.'
+    );
+  });
+
+  // 28. Regression: 1 presentation with 2 slides -> 1 presentation / 2 slides
+  it('handles 1 presentation with 2 slides -> exactly 1 presentation and 2 slides', () => {
+    const input = `PRESENTATION: 1
+TITLE: Solo Presentation
+
+SLIDE: First Slide
+TEXT: Content for the first slide.
+
+SLIDE: Second Slide
+BULLETS:
+- Point A
+- Point B`;
+
+    // Batch parser
+    const batchRes = parseBatchPresentations(input);
+    assert.equal(batchRes.totalPresentations, 1);
+    assert.equal(batchRes.items.length, 1);
+    assert.equal(batchRes.items[0].presentation.slides.length, 2);
+    assert.equal(batchRes.items[0].presentation.slides[0].title, 'First Slide');
+    assert.equal(batchRes.items[0].presentation.slides[1].title, 'Second Slide');
+
+    // Code2PPT parser
+    const codeRes = parsePresentation(input);
+    assert.equal(codeRes.presentation.slides.length, 2);
+    assert.equal(codeRes.presentation.slides[0].title, 'First Slide');
+    assert.equal(codeRes.presentation.slides[1].title, 'Second Slide');
+  });
+
+  // 29. Regression: 2 presentations with 2 slides each -> 2 presentations / 4 slides total
+  it('handles 2 presentations with 2 slides each -> 2 presentations and 4 total slides', () => {
+    const input = `PRESENTATION: 1
+TITLE: Biology Basics
+
+SLIDE: Introduction
+TEXT: Biology is the study of life.
+
+SLIDE: Characteristics
+BULLETS:
+- Growth
+- Reproduction
+
+PRESENTATION: 2
+TITLE: Cell Biology
+
+SLIDE: Cell Structure
+TEXT: Cells contain specialized structures.
+
+SLIDE: Organelles
+BULLETS:
+- Nucleus
+- Mitochondria`;
+
+    // Batch parser
+    const batchRes = parseBatchPresentations(input);
+    assert.equal(batchRes.totalPresentations, 2);
+    assert.equal(batchRes.items.length, 2);
+    assert.equal(batchRes.items[0].presentation.title, 'Biology Basics');
+    assert.equal(batchRes.items[0].presentation.slides.length, 2);
+    assert.equal(batchRes.items[1].presentation.title, 'Cell Biology');
+    assert.equal(batchRes.items[1].presentation.slides.length, 2);
+
+    const totalSlides =
+      batchRes.items[0].presentation.slides.length +
+      batchRes.items[1].presentation.slides.length;
+    assert.equal(totalSlides, 4, 'Must have exactly 4 total slides across the 2 presentations');
+
+    // Code2PPT automatic routing
+    const codeRes = parsePresentation(input);
+    assert.equal(codeRes.isMultiPresentation, true);
+    assert.equal(codeRes.totalPresentations, 2);
+    assert.equal(codeRes.presentations?.length, 2);
+    assert.equal(codeRes.presentations?.[0].slides.length, 2);
+    assert.equal(codeRes.presentations?.[1].slides.length, 2);
+  });
+
+  // 30. Regression: 3 presentations with 2 slides each -> 3 presentations / 6 slides total
+  it('handles 3 presentations with 2 slides each -> 3 presentations and 6 total slides', async () => {
+    const input = `PRESENTATION: 1
+TITLE: Biology Basics
+
+SLIDE: Introduction
+TEXT: Biology is the study of life.
+
+SLIDE: Characteristics
+BULLETS:
+- Growth
+- Reproduction
+
+PRESENTATION: 2
+TITLE: Cell Biology
+
+SLIDE: Cell Structure
+TEXT: Cells contain specialized structures.
+
+SLIDE: Organelles
+BULLETS:
+- Nucleus
+- Mitochondria
+
+PRESENTATION: 3
+TITLE: Genetics
+
+SLIDE: DNA Architecture
+TEXT: DNA encodes the hereditary instructions.
+
+SLIDE: Inheritance
+BULLETS:
+- Genes
+- Chromosomes`;
+
+    // Batch parser
+    const batchRes = parseBatchPresentations(input);
+    assert.equal(batchRes.totalPresentations, 3);
+    assert.equal(batchRes.items.length, 3);
+    assert.equal(batchRes.items[0].presentation.slides.length, 2);
+    assert.equal(batchRes.items[1].presentation.slides.length, 2);
+    assert.equal(batchRes.items[2].presentation.slides.length, 2);
+
+    const totalSlides = batchRes.items.reduce(
+      (sum, it) => sum + it.presentation.slides.length,
+      0
+    );
+    assert.equal(totalSlides, 6, 'Must have exactly 6 total slides across the 3 presentations');
+
+    // Verify all 3 can export separately
+    for (let i = 0; i < 3; i++) {
+      const pptx = buildPptxPresentation(batchRes.items[i].presentation);
+      const b64 = await pptx.write({ outputType: 'base64' });
+      assert.ok(typeof b64 === 'string' && b64.length > 1000);
+    }
+  });
+
+  // 31. Regression: 20 presentations with different slide counts -> 20 presentations, all slides preserved, no slide limit
+  it('handles 20 presentations with different slide counts, preserving all slides and decks', () => {
+    // Deck 1 has 1 slide, Deck 2 has 2 slides, ... Deck 20 has 4 slides
+    const slideCounts = [
+      1, 2, 3, 2, 4, 1, 5, 2, 3, 4,
+      2, 1, 3, 4, 2, 5, 1, 3, 2, 4,
+    ];
+    const totalExpectedSlides = slideCounts.reduce((a, b) => a + b, 0); // 54 slides!
+
+    const deckParts: string[] = [];
+    for (let p = 0; p < 20; p++) {
+      const slidesInDeck = slideCounts[p];
+      const pNum = p + 1;
+      const lines = [`PRESENTATION: ${pNum}`, `TITLE: Presentation ${pNum}`];
+      for (let s = 1; s <= slidesInDeck; s++) {
+        lines.push(`SLIDE: Slide ${pNum}.${s}\nTEXT: Content for slide ${s} in presentation ${pNum}`);
+      }
+      deckParts.push(lines.join('\n\n'));
+    }
+
+    const input = deckParts.join('\n\n');
+    const batchRes = parseBatchPresentations(input);
+
+    assert.equal(batchRes.hasErrors, false);
+    assert.equal(batchRes.totalPresentations, 20);
+    assert.equal(batchRes.items.length, 20);
+
+    let actualSlideSum = 0;
+    for (let p = 0; p < 20; p++) {
+      const actualSlides = batchRes.items[p].presentation.slides.length;
+      assert.equal(
+        actualSlides,
+        slideCounts[p],
+        `Presentation ${p + 1} must retain exactly ${slideCounts[p]} slides`
+      );
+      actualSlideSum += actualSlides;
+    }
+
+    assert.equal(
+      actualSlideSum,
+      totalExpectedSlides,
+      `All ${totalExpectedSlides} slides must be preserved with no slide count limit`
+    );
+  });
+
+  // 32. Regression: 21 presentations is strictly rejected
+  it('strictly rejects 21 presentations with BATCH_LIMIT_EXCEEDED error', () => {
+    const deckParts: string[] = [];
+    for (let i = 1; i <= 21; i++) {
+      deckParts.push(`PRESENTATION: ${i}\nTITLE: Deck ${i}\nSLIDE: S1\nTEXT: C1`);
+    }
+    const input = deckParts.join('\n\n');
+
+    const batchRes = parseBatchPresentations(input);
+    assert.equal(batchRes.hasErrors, true);
+    assert.equal(batchRes.totalPresentations, 21);
+    assert.equal(batchRes.items.length, 0);
+    const limitIssue = batchRes.issues.find((iss) => iss.code === 'BATCH_LIMIT_EXCEEDED');
+    assert.ok(limitIssue, 'Must contain BATCH_LIMIT_EXCEEDED issue');
+
+    // Also check Code2PPT auto-routing rejects 21 presentations
+    const codeRes = parsePresentation(input);
+    assert.equal(codeRes.hasErrors, true);
+    assert.ok(codeRes.issues.some((iss) => iss.code === 'BATCH_LIMIT_EXCEEDED'));
+  });
+
+  // 33. Regression: One presentation containing many slides is accepted (no slide limit)
+  it('accepts one presentation containing many slides without any total-slide limit', () => {
+    const slideCount = 45;
+    const lines = [`PRESENTATION: 1`, `TITLE: Mega Presentation with ${slideCount} Slides`];
+    for (let s = 1; s <= slideCount; s++) {
+      lines.push(`SLIDE: Topic ${s}\nTEXT: Detailed text on topic ${s}\n- Bullet point ${s}`);
+    }
+    const input = lines.join('\n\n');
+
+    const batchRes = parseBatchPresentations(input);
+    assert.equal(batchRes.hasErrors, false);
+    assert.equal(batchRes.totalPresentations, 1);
+    assert.equal(batchRes.items.length, 1);
+    assert.equal(
+      batchRes.items[0].presentation.slides.length,
+      slideCount,
+      `Must accept all ${slideCount} slides in a single presentation`
+    );
+  });
+
+  // 34. Regression: Text containing the word "presentation" without declaration must NOT create a presentation
+  it('does NOT create a new presentation when the word "presentation" appears in normal text or bullets', () => {
+    const input = `PRESENTATION: 1
+TITLE: Effective Presentations
+
+SLIDE: Overview
+TEXT: Presentation skills are crucial for executive leadership.
+TEXT: We held a presentation workshop yesterday afternoon.
+
+SLIDE: Best Practices
+BULLETS:
+- Presentation of data requires clean and readable charts
+- The presentation should keep the audience engaged
+- Avoid presentation clutter by using whitespace
+QUOTE: A great presentation inspires action.`;
+
+    const count = countPresentationDeclarations(input);
+    assert.equal(count, 1, 'Must detect exactly 1 presentation declaration, not treating text occurrences as decks');
+
+    const batchRes = parseBatchPresentations(input);
+    assert.equal(batchRes.totalPresentations, 1);
+    assert.equal(batchRes.items.length, 1);
+    assert.equal(batchRes.items[0].presentation.slides.length, 2);
+
+    // Verify slide 1 has the text elements with "presentation"
+    const s1 = batchRes.items[0].presentation.slides[0];
+    assert.equal(s1.elements.length, 2);
+    assert.ok(s1.elements[0].content.includes('Presentation skills'));
+
+    // Verify slide 2 has the bullets and quote with "presentation"
+    const s2 = batchRes.items[0].presentation.slides[1];
+    assert.equal(s2.elements.length, 4);
+    assert.ok(s2.elements[0].content.includes('Presentation of data'));
+    assert.ok(s2.elements[1].content.includes('The presentation should'));
+    assert.ok(s2.elements[2].content.includes('Avoid presentation clutter'));
   });
 });

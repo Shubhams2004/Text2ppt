@@ -36,19 +36,129 @@ export interface BatchParseResult {
   errorCount: number;
 }
 
+export interface MatchHeaderResult {
+  isHeader: boolean;
+  label: string;
+  title: string;
+}
+
 /**
- * Regex to detect presentation boundaries in batch text:
+ * Robust detection of presentation boundaries in batch text.
  * Tolerates:
- * - PRESENTATION: 1
- * - PRESENTATION 1
- * - Presentation: 1
- * - Presentation 1
- * - === PRESENTATION 1 ===
- * - --- PRESENTATION 1 ---
- * - PRESENTATION: Title
+ * - PRESENTATION: 1, PRESENTATION 1, Presentation 1
+ * - PRESENTATION: 3, PRESENTATION 3, Presentation 3
+ * - PRESENTATION, PRESENTATION:, Presentation:
+ * - PRESENTATION 3:, PRESENTATION #3, PRESENTATION: #3
+ * - Markdown headings: # PRESENTATION 1, ## PRESENTATION 2, ### PRESENTATION 3
+ * - Markdown bold/italics: **PRESENTATION: 1**, **PRESENTATION 3**
+ * - Numbered/bullet lists: 1. PRESENTATION: 1, - PRESENTATION: 1, 3. PRESENTATION: 3
+ * - Banners: === PRESENTATION 1 ===, --- PRESENTATION 2 ---, *** PRESENTATION 3 ***
+ * - Deck syntax: DECK: 1, DECK 2, DECK: 3
+ * - Code2PPT DSL: presentation "Deck Title"
  */
-const BATCH_HEADER_REGEX =
-  /^\s*(?:={3,}|-{3,})?\s*PRESENTATION(?:\s*:\s*|\s+)([^\r\n]+?)\s*(?:={3,}|-{3,})?$/i;
+export function matchBatchHeader(
+  line: string,
+  boundaryCount: number = 0
+): MatchHeaderResult | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+
+  // Labeled slide elements are not presentation headers
+  if (/^(?:TEXT|QUOTE|SUBTITLE|IMAGE|SLIDE|TITLE|HEADING|LAYOUT)\s*:/i.test(trimmed)) {
+    return null;
+  }
+
+  // Check if line was formatted as a bullet list
+  const isListBullet = /^(?:[-*•]|\d+[.)])\s+/u.test(trimmed);
+
+  // Strip leading decorations: markdown headers (#..#), list bullets, dividers (===, ---, ***), markdown bold/italics (**, __, *)
+  let clean = trimmed.replace(
+    /^(?:#{1,6}\s+|={3,}\s*|-{3,}\s*|\*{3,}\s*|\*{1,2}|_{1,2}|(?:[-*•]|\d+[.)])\s+)+/i,
+    ''
+  );
+  // Strip trailing decorations: banners, markdown bold/italics, headers, or spaces
+  clean = clean.replace(/(?:\*{1,2}|_{1,2}|={3,}|-{3,}|\*{3,}|#{1,6}|\s)+$/i, '').trim();
+
+  // Code2PPT DSL presentation declaration: presentation "Title" or presentation 'Title'
+  const dslMatch = clean.match(/^presentation\s+["']([^"']+)["']$/i);
+  if (dslMatch) {
+    const dslTitle = dslMatch[1].trim();
+    return {
+      isHeader: true,
+      label: `Presentation ${boundaryCount + 1}`,
+      title: dslTitle,
+    };
+  }
+
+  // Match PRESENTATION or DECK keyword
+  const match = clean.match(/^(PRESENTATION|DECK)(?:(\s*[:.-]\s*)|(\s+)|$)(.*)$/i);
+  if (!match) return null;
+
+  const sep = match[2];
+  const rest = (match[4] || '').trim();
+
+  // If there is no separator and there is text following, verify that it's a number, quotes, or deck identifier
+  // This prevents normal sentences like "Presentation skills are important" from being treated as a declaration
+  if (!sep && rest) {
+    const isNumberedOrQuoted =
+      /^(?:#\s*)?\d+(?:\b|[:.-])/.test(rest) || /^["']/.test(rest);
+    if (!isNumberedOrQuoted) {
+      return null;
+    }
+  }
+
+  // If this line was formatted as a bullet list item, only accept if it has a colon/separator, a number, or is explicit header
+  if (isListBullet) {
+    const hasColonOrSep = Boolean(sep);
+    const hasNumber = /^(?:#\s*)?\d+/.test(rest);
+    const isExplicitCaps = /^(?:PRESENTATION|DECK)$/i.test(clean);
+    if (!hasColonOrSep && !hasNumber && !isExplicitCaps) {
+      return null;
+    }
+  }
+
+  const rawArg = rest.replace(/^["']|["']$/g, '').trim();
+  const numMatch = rawArg.match(/^(?:#\s*)?(\d+)(?:\s*[:.-]\s*(.*))?$/);
+  if (numMatch) {
+    const deckNum = numMatch[1];
+    const restTitle = (numMatch[2] || '').trim();
+    return {
+      isHeader: true,
+      label: `Presentation ${deckNum}`,
+      title: restTitle,
+    };
+  }
+
+  return {
+    isHeader: true,
+    label: rawArg
+      ? `Presentation ${boundaryCount + 1}: ${rawArg}`
+      : `Presentation ${boundaryCount + 1}`,
+    title: rawArg,
+  };
+}
+
+/**
+ * Counts the number of presentation declarations in an input.
+ * Avoids false positives from the word "presentation" inside normal text.
+ */
+export function countPresentationDeclarations(text: string): number {
+  if (!text || !text.trim()) return 0;
+  const lines = text.split(/\r?\n/);
+  let count = 0;
+  for (const line of lines) {
+    if (matchBatchHeader(line, count)) {
+      count++;
+    }
+  }
+  return count;
+}
+
+/**
+ * Legacy regex for backward compatibility.
+ */
+export const BATCH_HEADER_REGEX =
+  /^\s*(?:#{1,6}\s+|={3,}\s*|-{3,}\s*|\*{3,}\s*|\*{1,2}|_{1,2}|(?:[-*•]|\d+[.)])\s+)?\s*(?:PRESENTATION|DECK)(?:\s*[:.-]\s*|\s+(?:\d+|["'].*?["']|#\d+|$)|$)(.*?)(?:\*{1,2}|_{1,2}|={3,}|-{3,}|\*{3,}|#{1,6})?\s*$/i;
 
 /**
  * Explicit title line: TITLE: <title> or Title: <title>
@@ -101,7 +211,8 @@ function parseSingleBatchChunk(
   rawChunk: string,
   startLine: number,
   batchIndex: number,
-  fallbackLabel: string
+  fallbackLabel: string,
+  initialTitle?: string
 ): { presentation: Presentation; issues: ValidationIssue[]; hasErrors: boolean } {
   const issues: ValidationIssue[] = [];
   const lines = rawChunk.split(/\r?\n/);
@@ -168,7 +279,7 @@ function parseSingleBatchChunk(
   }
 
   // Parse structured batch format (TITLE:, SLIDE:, TEXT:, BULLETS:)
-  let presentationTitle = '';
+  let presentationTitle = initialTitle?.trim() || '';
   let presentationTitleLine = startLine;
   const slides: Slide[] = [];
   let currentSlide: Slide | null = null;
@@ -224,8 +335,13 @@ function parseSingleBatchChunk(
       continue;
     }
 
-    // Skip redundant Presentation header inside the chunk if encountered
-    if (BATCH_HEADER_REGEX.test(trimmed)) {
+    // Skip Presentation / Deck header inside the chunk if encountered
+    const headerCheck = matchBatchHeader(rawLine, batchIndex);
+    if (headerCheck) {
+      if (!presentationTitle && headerCheck.title) {
+        presentationTitle = headerCheck.title;
+        presentationTitleLine = absLine;
+      }
       continue;
     }
 
@@ -426,41 +542,22 @@ export function parseBatchPresentations(batchText: string): BatchParseResult {
     startLine: number; // 1-indexed
     label: string;
     lineIndex: number;
+    initialTitle?: string;
   }
 
   const boundaries: ChunkBoundary[] = [];
 
   for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i];
-    const trimmed = rawLine.trim();
     const absLine = i + 1;
 
-    // Check if line matches presentation header
-    // Avoid false positives: text, bullets, quotes must not match
-    const isBullet = BULLET_MARKER_REGEX.test(trimmed) || /^(?:BULLET|BULLETS)\s*:/i.test(trimmed);
-    const isText = /^(?:TEXT|QUOTE|SUBTITLE|IMAGE)\s*:/i.test(trimmed);
-    if (isBullet || isText) {
-      continue;
-    }
-
-    const match = trimmed.match(BATCH_HEADER_REGEX);
-    if (match) {
-      const headerArg = match[1].trim();
-      const label = isNaN(Number(headerArg))
-        ? `Presentation ${boundaries.length + 1}: ${headerArg}`
-        : `Presentation ${headerArg}`;
-
+    const header = matchBatchHeader(rawLine, boundaries.length);
+    if (header) {
       boundaries.push({
         startLine: absLine,
-        label,
+        label: header.label,
         lineIndex: i,
-      });
-    } else if (/^\s*presentation\s+["']/i.test(trimmed)) {
-      // Also support multiple standard Code2PPT DSL presentation declarations
-      boundaries.push({
-        startLine: absLine,
-        label: `Presentation ${boundaries.length + 1}`,
-        lineIndex: i,
+        initialTitle: header.title,
       });
     }
   }
@@ -526,7 +623,8 @@ export function parseBatchPresentations(batchText: string): BatchParseResult {
       rawChunk,
       startLine,
       b,
-      boundary.label
+      boundary.label,
+      boundary.initialTitle
     );
 
     items.push({
@@ -565,7 +663,7 @@ export function serializeBatchPresentations(items: BatchPresentationItem[]): str
     .map((item, idx) => {
       // Clean previous header if present to re-number cleanly
       const lines = item.rawContent.split(/\r?\n/);
-      const filteredLines = lines.filter((l) => !BATCH_HEADER_REGEX.test(l.trim()));
+      const filteredLines = lines.filter((l) => !matchBatchHeader(l));
       return `PRESENTATION: ${idx + 1}\n${filteredLines.join('\n').trim()}`;
     })
     .join('\n\n');

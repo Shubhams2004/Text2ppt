@@ -1,15 +1,21 @@
 import { useState, useMemo, useCallback } from 'react';
 import { parsePresentation } from './parser/presentationParser';
 import { parseSimpleText } from './parser/simpleTextParser';
-import { parseBatchPresentations, serializeBatchPresentations } from './parser/batchParser';
+import {
+  parseBatchPresentations,
+  serializeBatchPresentations,
+  countPresentationDeclarations,
+} from './parser/batchParser';
 import { exportToPptxFile } from './renderer/pptxRenderer';
+import { exportToPdfFile } from './renderer/pdfRenderer';
+import { autoPaginatePresentation } from './renderer/layoutSystem';
 import { DEFAULT_CODE, DEFAULT_SIMPLE_TEXT, DEFAULT_BATCH_TEXT } from './examples/samplePresentations';
-import { Header } from './components/Header';
+import { Header, ExportFormat } from './components/Header';
 import { Editor, InputMode } from './components/Editor';
 import { Preview } from './components/Preview';
 import { ValidationStatus } from './components/ValidationStatus';
 import { HelpModal } from './components/HelpModal';
-import { ThemeId } from './models/presentation';
+import { Presentation, ThemeId, ValidationIssue } from './models/presentation';
 
 export default function App() {
   const [inputMode, setInputMode] = useState<InputMode>('code');
@@ -44,10 +50,37 @@ export default function App() {
     [inputMode]
   );
 
-  // Batch parse result memo
+  const handleModeChange = useCallback(
+    (newMode: InputMode) => {
+      if (newMode === 'batch') {
+        const detectedInCurrent = countPresentationDeclarations(currentContent);
+        if (detectedInCurrent > 1) {
+          setBatchText(currentContent);
+        }
+      }
+      setInputMode(newMode);
+    },
+    [currentContent]
+  );
+
+  // Automatic detection: does current content contain multiple presentation declarations?
+  const isMultiInCurrent = useMemo(() => {
+    if (inputMode === 'batch') return true;
+    return countPresentationDeclarations(currentContent) > 1;
+  }, [inputMode, currentContent]);
+
+  // Batch parse result memo (processes batchText if in batch mode, or currentContent if multi-presentation)
   const batchResult = useMemo(() => {
-    return parseBatchPresentations(batchText);
-  }, [batchText]);
+    const textToParse = inputMode === 'batch' ? batchText : currentContent;
+    const parsed = parseBatchPresentations(textToParse);
+    return {
+      ...parsed,
+      items: parsed.items.map((it) => ({
+        ...it,
+        presentation: autoPaginatePresentation(it.presentation),
+      })),
+    };
+  }, [inputMode, batchText, currentContent]);
 
   // Safe selected batch index
   const safeBatchIndex = useMemo(() => {
@@ -57,7 +90,7 @@ export default function App() {
 
   // Parse code, simple text, or batch on every change
   const activeParseResult = useMemo(() => {
-    if (inputMode === 'batch') {
+    if (inputMode === 'batch' || isMultiInCurrent) {
       if (batchResult.items.length === 0) {
         return {
           presentation: {
@@ -71,16 +104,21 @@ export default function App() {
       }
       const activeItem = batchResult.items[safeBatchIndex];
       return {
-        presentation: activeItem.presentation,
+        presentation: autoPaginatePresentation(activeItem.presentation),
         issues: [...batchResult.issues, ...activeItem.issues],
         hasErrors: activeItem.hasErrors || batchResult.hasErrors,
       };
     }
-    if (inputMode === 'simple-text') {
-      return parseSimpleText(simpleText);
-    }
-    return parsePresentation(code);
-  }, [inputMode, code, simpleText, batchResult, safeBatchIndex]);
+    const rawResult =
+      inputMode === 'simple-text'
+        ? parseSimpleText(simpleText)
+        : parsePresentation(code);
+
+    return {
+      ...rawResult,
+      presentation: autoPaginatePresentation(rawResult.presentation),
+    };
+  }, [inputMode, isMultiInCurrent, code, simpleText, batchResult, safeBatchIndex]);
 
   const { presentation, issues, hasErrors } = activeParseResult;
 
@@ -150,10 +188,14 @@ export default function App() {
       reordered[index - 1] = reordered[index];
       reordered[index] = temp;
       const newText = serializeBatchPresentations(reordered);
-      setBatchText(newText);
+      if (inputMode === 'batch') {
+        setBatchText(newText);
+      } else {
+        handleContentChange(newText);
+      }
       setSelectedBatchIndex(index - 1);
     },
-    [batchResult.items]
+    [batchResult.items, inputMode, handleContentChange]
   );
 
   const handleMoveDownBatch = useCallback(
@@ -164,33 +206,48 @@ export default function App() {
       reordered[index + 1] = reordered[index];
       reordered[index] = temp;
       const newText = serializeBatchPresentations(reordered);
-      setBatchText(newText);
+      if (inputMode === 'batch') {
+        setBatchText(newText);
+      } else {
+        handleContentChange(newText);
+      }
       setSelectedBatchIndex(index + 1);
     },
-    [batchResult.items]
+    [batchResult.items, inputMode, handleContentChange]
   );
 
   const handleRemoveBatch = useCallback(
     (index: number) => {
       const filtered = batchResult.items.filter((_, idx) => idx !== index);
       const newText = serializeBatchPresentations(filtered);
-      setBatchText(newText);
+      if (inputMode === 'batch') {
+        setBatchText(newText);
+      } else {
+        handleContentChange(newText);
+      }
       if (selectedBatchIndex >= filtered.length) {
         setSelectedBatchIndex(Math.max(0, filtered.length - 1));
       }
     },
-    [batchResult.items, selectedBatchIndex]
+    [batchResult.items, selectedBatchIndex, inputMode, handleContentChange]
   );
 
   const handleExportSingleBatch = useCallback(
-    async (index: number) => {
+    async (index: number, format: ExportFormat = 'pptx') => {
       const item = batchResult.items[index];
       if (!item || item.presentation.slides.length === 0) return;
       const fileName = item.presentation.title || `presentation_${index + 1}`;
-      await exportToPptxFile(item.presentation, {
-        fileName,
-        includeSlideNumbers: true,
-      });
+      if (format === 'pdf') {
+        await exportToPdfFile(item.presentation, {
+          fileName,
+          includeSlideNumbers: true,
+        });
+      } else {
+        await exportToPptxFile(item.presentation, {
+          fileName,
+          includeSlideNumbers: true,
+        });
+      }
     },
     [batchResult.items]
   );
@@ -198,7 +255,7 @@ export default function App() {
   const isBatchLimitExceeded = batchResult.totalPresentations > 20;
   const batchLimitIssue = batchResult.issues.find((i) => i.code === 'BATCH_LIMIT_EXCEEDED');
 
-  const handleExportAllBatch = useCallback(async () => {
+  const handleExportAllBatch = useCallback(async (format: ExportFormat = 'pptx') => {
     if (batchResult.totalPresentations > 20) {
       return;
     }
@@ -215,10 +272,17 @@ export default function App() {
         setBatchExportProgress({ current: i + 1, total: validItems.length });
         const item = validItems[i];
         const fileName = item.presentation.title || `presentation_${i + 1}`;
-        await exportToPptxFile(item.presentation, {
-          fileName,
-          includeSlideNumbers: true,
-        });
+        if (format === 'pdf') {
+          await exportToPdfFile(item.presentation, {
+            fileName,
+            includeSlideNumbers: true,
+          });
+        } else {
+          await exportToPptxFile(item.presentation, {
+            fileName,
+            includeSlideNumbers: true,
+          });
+        }
         // Non-blocking browser download delay between files
         await new Promise((resolve) => setTimeout(resolve, 400));
       }
@@ -234,8 +298,8 @@ export default function App() {
     setActiveMobileTab('editor');
   }, []);
 
-  // Export PPTX Handler for currently active presentation
-  const handleExport = useCallback(async () => {
+  // Export PPTX / PDF Handler for currently active presentation
+  const handleExport = useCallback(async (format: ExportFormat = 'pptx') => {
     if (presentation.slides.length === 0) return;
 
     setIsExporting(true);
@@ -243,17 +307,22 @@ export default function App() {
 
     try {
       const fileName = presentation.title || 'presentation';
-      const result = await exportToPptxFile(presentation, {
-        fileName,
-        includeSlideNumbers: true,
-      });
+      const result =
+        format === 'pdf'
+          ? await exportToPdfFile(presentation, {
+              fileName,
+              includeSlideNumbers: true,
+            })
+          : await exportToPptxFile(presentation, {
+              fileName,
+              includeSlideNumbers: true,
+            });
 
       if (result.success) {
         setExportSuccess(true);
         setTimeout(() => setExportSuccess(false), 3000);
       } else {
         console.error('Export failed:', result.error);
-        alert(`Export failed: ${result.error}`);
       }
     } catch (err) {
       console.error('Unexpected export error:', err);
@@ -278,6 +347,9 @@ export default function App() {
         activeMobileTab={activeMobileTab}
         onMobileTabChange={setActiveMobileTab}
         exportSuccess={exportSuccess}
+        totalBatchCount={batchResult.totalPresentations}
+        onExportAllBatch={handleExportAllBatch}
+        isExportingAllBatch={isExportingAllBatch}
       />
 
       {/* Main Two-Panel Layout */}
@@ -296,7 +368,7 @@ export default function App() {
             activeLine={activeLine}
             onSelectLine={handleSelectLine}
             mode={inputMode}
-            onModeChange={setInputMode}
+            onModeChange={handleModeChange}
             batchItems={batchResult.items}
             totalBatchDetected={batchResult.totalPresentations}
             batchLimitExceeded={isBatchLimitExceeded}
@@ -325,6 +397,9 @@ export default function App() {
             themeId={presentation.theme}
             activeSlideIndex={clampedSlideIndex}
             onSelectSlide={setActiveSlideIndex}
+            batchItems={batchResult.items}
+            selectedBatchIndex={safeBatchIndex}
+            onSelectBatchItem={handleSelectBatchItem}
           />
         </section>
       </main>

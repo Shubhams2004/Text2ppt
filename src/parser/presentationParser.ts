@@ -10,6 +10,7 @@ import {
   ValidationIssue,
 } from '../models/presentation';
 import { isJavaScriptOrPptxCode } from './jsToDslConverter';
+import { countPresentationDeclarations, parseBatchPresentations } from './batchParser';
 
 export interface ExtractedToken {
   rawKeyword: string;
@@ -178,6 +179,25 @@ export function extractKeywordAndArgument(line: string): ExtractedToken | null {
  * Parses presentation DSL code into a deterministic, typed Presentation AST
  */
 export function parsePresentation(code: string): ParseResult {
+  // Automatic routing: if input contains multiple presentation declarations, process all of them
+  const presentationCount = countPresentationDeclarations(code);
+  if (presentationCount > 1) {
+    const batchResult = parseBatchPresentations(code);
+    return {
+      presentation: batchResult.items[0]?.presentation || {
+        title: 'Untitled Presentation',
+        theme: 'modern',
+        slides: [],
+      },
+      issues: batchResult.issues,
+      hasErrors: batchResult.hasErrors,
+      isMultiPresentation: true,
+      totalPresentations: batchResult.totalPresentations,
+      presentations: batchResult.items.map((it) => it.presentation),
+      batchItems: batchResult.items,
+    };
+  }
+
   const lines = code.split(/\r?\n/);
   const issues: ValidationIssue[] = [];
 
@@ -207,6 +227,49 @@ export function parsePresentation(code: string): ParseResult {
 
     // Skip empty lines and comments
     if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) {
+      continue;
+    }
+
+    // Check if line is a bullet item starting with -, •, *, +, or number
+    const bulletMarkerMatch = trimmed.match(/^\s*(?:[-•·*+–—]|\d+[.)])\s+(.*)$/u);
+    if (bulletMarkerMatch) {
+      if (!currentSlide) {
+        currentSlide = {
+          id: `slide-${slides.length + 1}`,
+          index: slides.length,
+          title: presentationTitle || 'Key Points',
+          line: lineNum,
+          elements: [],
+        };
+        slides.push(currentSlide);
+      }
+      elementCounter++;
+      currentSlide.elements.push({
+        id: `el-${elementCounter}`,
+        type: 'bullet',
+        content: bulletMarkerMatch[1].trim(),
+        line: lineNum,
+      });
+      continue;
+    }
+
+    // Section headers like BULLETS: or POINTS:
+    if (/^\s*(?:BULLETS|POINTS)\s*:?\s*$/i.test(trimmed)) {
+      continue;
+    }
+
+    // Presentation number declaration like "PRESENTATION: 1" or "DECK: 1"
+    const deckHeaderMatch = trimmed.match(
+      /^(?:PRESENTATION|DECK)(?:\s*:\s*|\s+)(?:#\s*)?(\d+)(?:\s*[:.-]\s*(.*))?$/i
+    );
+    if (deckHeaderMatch) {
+      hasPresentationDeclaration = true;
+      if (
+        deckHeaderMatch[2]?.trim() &&
+        (!presentationTitle || presentationTitle === 'Untitled Presentation')
+      ) {
+        presentationTitle = deckHeaderMatch[2].trim();
+      }
       continue;
     }
 

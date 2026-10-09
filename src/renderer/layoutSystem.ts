@@ -1,4 +1,4 @@
-import { ImageElement, Slide, SlideElement, SlideLayout } from '../models/presentation';
+import { ImageElement, Presentation, Slide, SlideElement, SlideLayout } from '../models/presentation';
 
 /**
  * Slide geometry specifications (16:9 widescreen: 10 x 5.625 inches)
@@ -285,7 +285,7 @@ export function computeAdaptiveTypography(
 /**
  * Estimates the vertical height required by an element at a given font size
  */
-function estimateElementHeight(
+export function estimateElementHeight(
   content: string,
   fontSize: number,
   paraSpaceAfterPt: number,
@@ -850,3 +850,294 @@ export const DEFAULT_LAYOUT_CONFIG = {
     contentBox: { x: 0.8, y: 3.3, w: 8.4, h: 1.7 },
   },
 };
+
+/**
+ * Resolves continuation title for auto-assigned overflow slides.
+ * E.g., "Overview" -> "Overview (Cont.)" -> "Overview (Cont. 2)" -> "Overview (Cont. 3)"
+ */
+export function getContinuationSlideTitle(originalTitle: string, partIndex: number): string {
+  const baseTitle = originalTitle
+    .replace(/\s*\((?:Cont\.|Part\s*\d+|Continued)(?:\s*\d+)?\)$/i, '')
+    .trim();
+  if (partIndex === 1) {
+    return baseTitle;
+  }
+  if (partIndex === 2) {
+    return `${baseTitle} (Cont.)`;
+  }
+  return `${baseTitle} (Cont. ${partIndex - 1})`;
+}
+
+/**
+ * Determines comfortable content height and width limits for each slide layout type
+ */
+export function getSlideContentCapacity(
+  title: string,
+  layoutType: SlideLayout = 'title-content'
+): { availableHeight: number; contentWidth: number; maxCapacityHeight: number } {
+  const titleLayout = computeTitleLayout(title);
+  const contentStartY = titleLayout.isLongTitle ? 1.52 : 1.45;
+  const footerStartY = 5.15;
+  const baseAvailableHeight = Math.max(1.0, footerStartY - contentStartY - 0.1);
+
+  if (layoutType === 'title') {
+    return {
+      availableHeight: 1.7,
+      contentWidth: 8.4,
+      maxCapacityHeight: 1.7,
+    };
+  }
+
+  if (layoutType === 'blank') {
+    return {
+      availableHeight: 4.2,
+      contentWidth: 8.4,
+      maxCapacityHeight: 4.2,
+    };
+  }
+
+  if (layoutType === 'full-image') {
+    return {
+      availableHeight: 0.7,
+      contentWidth: 8.4,
+      maxCapacityHeight: 0.7,
+    };
+  }
+
+  if (layoutType === 'text-image' || layoutType === 'image-text') {
+    return {
+      availableHeight: baseAvailableHeight,
+      contentWidth: 4.4,
+      maxCapacityHeight: baseAvailableHeight,
+    };
+  }
+
+  if (layoutType === 'two-column') {
+    return {
+      availableHeight: baseAvailableHeight,
+      contentWidth: 4.0,
+      maxCapacityHeight: baseAvailableHeight * 2,
+    };
+  }
+
+  return {
+    availableHeight: baseAvailableHeight,
+    contentWidth: 8.4,
+    maxCapacityHeight: baseAvailableHeight,
+  };
+}
+
+/**
+ * Splits a single long element into sentences or words that fit on the slide,
+ * preserving all content across consecutive slides without compression.
+ */
+function splitLongElementText(
+  content: string,
+  targetHeight: number,
+  fontSize: number,
+  spacingPt: number,
+  widthInches: number
+): { currentText: string; remainingText: string } {
+  const sentences = content.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g) || [content];
+  let cur = '';
+  let rem = '';
+
+  for (let i = 0; i < sentences.length; i++) {
+    const candidate = cur ? `${cur} ${sentences[i].trim()}` : sentences[i].trim();
+    const est = estimateElementHeight(candidate, fontSize, spacingPt, widthInches);
+    if (est.heightInches <= targetHeight || !cur) {
+      cur = candidate;
+    } else {
+      rem = sentences.slice(i).join(' ').trim();
+      break;
+    }
+  }
+
+  if (!rem && sentences.length === 1) {
+    const words = content.split(/\s+/);
+    cur = '';
+    for (let i = 0; i < words.length; i++) {
+      const candidate = cur ? `${cur} ${words[i]}` : words[i];
+      const est = estimateElementHeight(candidate, fontSize, spacingPt, widthInches);
+      if (est.heightInches <= targetHeight || !cur) {
+        cur = candidate;
+      } else {
+        rem = words.slice(i).join(' ').trim();
+        break;
+      }
+    }
+  }
+
+  return { currentText: cur || content, remainingText: rem };
+}
+
+/**
+ * Automatically assigns overflowing elements from a single slide onto consecutive next slides.
+ * Does not compress text, alter typography, or remove text.
+ */
+export function autoPaginateSlide(slide: Slide): Slide[] {
+  if (!slide.elements || slide.elements.length === 0) {
+    return [slide];
+  }
+
+  const layoutType = slide.layout || 'title-content';
+  const { maxCapacityHeight, contentWidth } = getSlideContentCapacity(slide.title, layoutType);
+
+  const fontSize = 16;
+  const bulletSpace = 8;
+  const paraSpace = 12;
+
+  const nonImageElements = slide.elements.filter((el) => el.type !== 'image');
+
+  let totalHeight = 0;
+  for (const el of nonImageElements) {
+    const space = el.type === 'bullet' ? bulletSpace : paraSpace;
+    const est = estimateElementHeight(el.content, fontSize, space, contentWidth);
+    totalHeight += est.heightInches;
+  }
+
+  // If all elements fit within standard comfortable capacity, no pagination needed
+  if (totalHeight <= maxCapacityHeight) {
+    return [slide];
+  }
+
+  // Overflow detected: allocate elements across consecutive slides
+  const paginatedSlides: Slide[] = [];
+  let currentElements: SlideElement[] = [];
+  let currentHeight = 0;
+  let partIndex = 1;
+  let activeWidth = contentWidth;
+  let activeCapacity = maxCapacityHeight;
+
+  const queue: SlideElement[] = [...slide.elements];
+
+  while (queue.length > 0) {
+    const el = queue.shift()!;
+
+    // Image elements stay on the primary slide
+    if (el.type === 'image') {
+      if (partIndex === 1) {
+        currentElements.push(el);
+      }
+      continue;
+    }
+
+    const space = el.type === 'bullet' ? bulletSpace : paraSpace;
+    const est = estimateElementHeight(el.content, fontSize, space, activeWidth);
+
+    // If adding this element exceeds current slide's available capacity and we have items
+    if (
+      currentElements.filter((e) => e.type !== 'image').length > 0 &&
+      currentHeight + est.heightInches > activeCapacity
+    ) {
+      const currentTitle = getContinuationSlideTitle(slide.title, partIndex);
+      paginatedSlides.push({
+        ...slide,
+        id: partIndex === 1 ? slide.id : `${slide.id}-cont-${partIndex}`,
+        title: currentTitle,
+        layout: partIndex === 1 ? slide.layout : 'title-content',
+        elements: currentElements,
+      });
+
+      partIndex++;
+      currentElements = [];
+      currentHeight = 0;
+      const nextCapacity = getSlideContentCapacity(
+        getContinuationSlideTitle(slide.title, partIndex),
+        'title-content'
+      );
+      activeWidth = nextCapacity.contentWidth;
+      activeCapacity = nextCapacity.maxCapacityHeight;
+    }
+
+    const currentEst = estimateElementHeight(el.content, fontSize, space, activeWidth);
+    if (currentEst.heightInches > activeCapacity) {
+      const { currentText, remainingText } = splitLongElementText(
+        el.content,
+        Math.max(1.0, activeCapacity - currentHeight),
+        fontSize,
+        space,
+        activeWidth
+      );
+
+      currentElements.push({
+        ...el,
+        content: currentText,
+      });
+
+      if (remainingText) {
+        queue.unshift({
+          ...el,
+          id: `${el.id}-rem`,
+          content: remainingText,
+        });
+      }
+
+      const currentTitle = getContinuationSlideTitle(slide.title, partIndex);
+      paginatedSlides.push({
+        ...slide,
+        id: partIndex === 1 ? slide.id : `${slide.id}-cont-${partIndex}`,
+        title: currentTitle,
+        layout: partIndex === 1 ? slide.layout : 'title-content',
+        elements: currentElements,
+      });
+
+      partIndex++;
+      currentElements = [];
+      currentHeight = 0;
+      const nextCapacity = getSlideContentCapacity(
+        getContinuationSlideTitle(slide.title, partIndex),
+        'title-content'
+      );
+      activeWidth = nextCapacity.contentWidth;
+      activeCapacity = nextCapacity.maxCapacityHeight;
+      continue;
+    }
+
+    currentElements.push(el);
+    currentHeight += currentEst.heightInches;
+  }
+
+  if (currentElements.length > 0) {
+    const currentTitle = getContinuationSlideTitle(slide.title, partIndex);
+    paginatedSlides.push({
+      ...slide,
+      id: partIndex === 1 ? slide.id : `${slide.id}-cont-${partIndex}`,
+      title: currentTitle,
+      layout: partIndex === 1 ? slide.layout : 'title-content',
+      elements: currentElements,
+    });
+  }
+
+  paginatedSlides.forEach((s, idx) => {
+    s.index = idx;
+  });
+
+  return paginatedSlides;
+}
+
+/**
+ * Automatically assigns overflowing text onto next slides across an entire presentation.
+ * Preserves all text, slide order, and element structure without text compression.
+ */
+export function autoPaginatePresentation(presentation: Presentation): Presentation {
+  if (!presentation || !presentation.slides || presentation.slides.length === 0) {
+    return presentation;
+  }
+
+  const allSlides: Slide[] = [];
+  for (const slide of presentation.slides) {
+    const paginated = autoPaginateSlide(slide);
+    allSlides.push(...paginated);
+  }
+
+  const reindexed = allSlides.map((slide, index) => ({
+    ...slide,
+    index,
+  }));
+
+  return {
+    ...presentation,
+    slides: reindexed,
+  };
+}

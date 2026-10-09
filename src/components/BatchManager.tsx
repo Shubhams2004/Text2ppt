@@ -11,8 +11,12 @@ import {
   Edit3,
   Loader2,
   Sparkles,
+  ChevronDown,
+  FileType,
 } from 'lucide-react';
 import { BatchPresentationItem } from '../parser/batchParser';
+
+export type ExportFormat = 'pptx' | 'pdf';
 
 interface BatchManagerProps {
   items: BatchPresentationItem[];
@@ -24,9 +28,10 @@ interface BatchManagerProps {
   onMoveUp: (index: number) => void;
   onMoveDown: (index: number) => void;
   onRemove: (index: number) => void;
-  onExportSingle: (index: number) => void;
-  onExportAll: () => void;
+  onExportSingle: (index: number, format?: ExportFormat) => void;
+  onExportAll: (format?: ExportFormat) => void;
   onEditInSource: (line: number) => void;
+  onPasteText?: (text: string) => void;
   isExportingAll: boolean;
   exportProgress?: { current: number; total: number } | null;
 }
@@ -44,9 +49,26 @@ export const BatchManager: React.FC<BatchManagerProps> = ({
   onExportSingle,
   onExportAll,
   onEditInSource,
+  onPasteText,
   isExportingAll,
   exportProgress,
 }) => {
+  const [isExportAllMenuOpen, setIsExportAllMenuOpen] = React.useState(false);
+  const [openSingleMenuIndex, setOpenSingleMenuIndex] = React.useState<number | null>(null);
+
+  const exportAllRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (exportAllRef.current && !exportAllRef.current.contains(e.target as Node)) {
+        setIsExportAllMenuOpen(false);
+      }
+      setOpenSingleMenuIndex(null);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const count = totalDetected !== undefined ? totalDetected : items.length;
   const isApproachingLimit = count >= 18 && count <= 20;
   const isOverLimit = count > 20 || limitExceeded;
@@ -55,7 +77,17 @@ export const BatchManager: React.FC<BatchManagerProps> = ({
   const errorCount = items.filter((i) => i.hasErrors).length;
 
   return (
-    <div className="flex flex-col h-full bg-slate-50/50 dark:bg-slate-900/50 overflow-hidden">
+    <div
+      tabIndex={0}
+      onPaste={(e) => {
+        const text = e.clipboardData.getData('text');
+        if (text && onPasteText) {
+          e.preventDefault();
+          onPasteText(text);
+        }
+      }}
+      className="flex flex-col h-full bg-slate-50/50 dark:bg-slate-900/50 overflow-hidden focus:outline-none"
+    >
       {/* Limit Exceeded Banner */}
       {isOverLimit && (
         <div className="flex-none p-3.5 bg-rose-500/10 border-b border-rose-500/30 flex items-start gap-2.5 text-xs text-rose-800 dark:text-rose-200 animate-in fade-in duration-150">
@@ -107,40 +139,111 @@ export const BatchManager: React.FC<BatchManagerProps> = ({
           )}
         </div>
 
-        {/* Export All Action */}
-        <button
-          onClick={onExportAll}
-          disabled={isExportingAll || validCount === 0 || isOverLimit}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed"
-          title={
-            isOverLimit
-              ? `Export disabled: Maximum 20 presentations per batch. Found ${count}.`
-              : 'Download all presentations as separate .pptx files'
-          }
-        >
-          {isExportingAll ? (
-            <>
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              <span>
-                {exportProgress
-                  ? `Exporting ${exportProgress.current}/${exportProgress.total}...`
-                  : 'Exporting All...'}
-              </span>
-            </>
-          ) : (
-            <>
-              <FileDown className="w-3.5 h-3.5" />
-              <span>Export All ({validCount} Decks)</span>
-            </>
-          )}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onEditInSource(1)}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 transition-colors cursor-pointer"
+            title="Open batch text in editor"
+          >
+            <Edit3 className="w-3.5 h-3.5" />
+            <span>Batch Text</span>
+          </button>
+
+          {/* Export All Action with format selection */}
+          <div className="relative" ref={exportAllRef}>
+            <div className="inline-flex rounded-lg shadow-xs">
+              <button
+                onClick={() => onExportAll('pptx')}
+                disabled={isExportingAll || validCount === 0 || isOverLimit}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-l-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white transition-all cursor-pointer disabled:cursor-not-allowed"
+                title={
+                  isOverLimit
+                    ? `Export disabled: Maximum 20 presentations per batch. Found ${count}.`
+                    : 'Download all presentations as separate .pptx files'
+                }
+              >
+                {isExportingAll ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>
+                      {exportProgress
+                        ? `Exporting ${exportProgress.current}/${exportProgress.total}...`
+                        : 'Exporting All...'}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <FileDown className="w-3.5 h-3.5" />
+                    <span>Export All ({validCount} Decks)</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={() => setIsExportAllMenuOpen(!isExportAllMenuOpen)}
+                disabled={isExportingAll || validCount === 0 || isOverLimit}
+                className="inline-flex items-center px-1.5 py-1.5 rounded-r-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white border-l border-indigo-500/50 transition-all cursor-pointer disabled:cursor-not-allowed"
+                title="Choose batch export format (PPTX or PDF)"
+                aria-label="Batch Export Options"
+              >
+                <ChevronDown className="w-3 h-3" />
+              </button>
+            </div>
+
+            {isExportAllMenuOpen && (
+              <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 p-1.5 z-50 animate-in fade-in zoom-in-95 duration-100">
+                <div className="px-2.5 py-1 text-[11px] font-medium text-slate-400 uppercase tracking-wider">
+                  Batch Format
+                </div>
+                <button
+                  onClick={() => {
+                    setIsExportAllMenuOpen(false);
+                    onExportAll('pptx');
+                  }}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 text-left transition-colors cursor-pointer"
+                >
+                  <FileDown className="w-4 h-4 text-indigo-600" />
+                  <div>
+                    <div className="font-medium">Export All (.pptx)</div>
+                    <div className="text-[10px] text-slate-500">PowerPoint files</div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => {
+                    setIsExportAllMenuOpen(false);
+                    onExportAll('pdf');
+                  }}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 text-left transition-colors cursor-pointer"
+                >
+                  <FileType className="w-4 h-4 text-rose-600" />
+                  <div>
+                    <div className="font-medium">Export All (.pdf)</div>
+                    <div className="text-[10px] text-slate-500">PDF documents</div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Presentations List */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
         {items.length === 0 ? (
-          <div className="p-8 text-center text-slate-400 text-xs">
-            No presentations detected. Paste batch text starting with <code className="font-mono bg-slate-200 dark:bg-slate-800 px-1 py-0.5 rounded">PRESENTATION: 1</code>.
+          <div className="p-8 text-center text-slate-400 text-xs flex flex-col items-center gap-3">
+            <p>
+              No presentations detected. Paste batch text starting with{' '}
+              <code className="font-mono bg-slate-200 dark:bg-slate-800 px-1 py-0.5 rounded">
+                PRESENTATION: 1
+              </code>.
+            </p>
+            <button
+              onClick={() => onEditInSource(1)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>Paste / Edit Batch Text</span>
+            </button>
           </div>
         ) : (
           items.map((item, idx) => {
@@ -256,15 +359,56 @@ export const BatchManager: React.FC<BatchManagerProps> = ({
                     </button>
                   </div>
 
-                  <button
-                    onClick={() => onExportSingle(idx)}
-                    disabled={item.hasErrors || slideCount === 0}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 border border-slate-200 dark:border-slate-800 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                    title="Export this deck as .pptx"
-                  >
-                    <FileDown className="w-3.5 h-3.5" />
-                    <span>Export .pptx</span>
-                  </button>
+                  <div className="relative">
+                    <div className="inline-flex rounded-md shadow-2xs">
+                      <button
+                        onClick={() => onExportSingle(idx, 'pptx')}
+                        disabled={item.hasErrors || slideCount === 0}
+                        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-l-md text-xs font-medium text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 border border-slate-200 dark:border-slate-800 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Export this deck as .pptx"
+                      >
+                        <FileDown className="w-3.5 h-3.5" />
+                        <span>PPTX</span>
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          setOpenSingleMenuIndex(openSingleMenuIndex === idx ? null : idx)
+                        }
+                        disabled={item.hasErrors || slideCount === 0}
+                        className="inline-flex items-center px-1.5 py-1 rounded-r-md text-xs font-medium text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 border border-l-0 border-slate-200 dark:border-slate-800 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Choose export format"
+                        aria-label="Export format options"
+                      >
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
+                    </div>
+
+                    {openSingleMenuIndex === idx && (
+                      <div className="absolute right-0 bottom-full mb-1 w-40 bg-white dark:bg-slate-900 rounded-lg shadow-xl border border-slate-200 dark:border-slate-800 p-1 z-30 animate-in fade-in zoom-in-95 duration-100">
+                        <button
+                          onClick={() => {
+                            setOpenSingleMenuIndex(null);
+                            onExportSingle(idx, 'pptx');
+                          }}
+                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                        >
+                          <FileDown className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>PowerPoint (.pptx)</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setOpenSingleMenuIndex(null);
+                            onExportSingle(idx, 'pdf');
+                          }}
+                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                        >
+                          <FileType className="w-3.5 h-3.5 text-rose-600" />
+                          <span>PDF Document (.pdf)</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             );

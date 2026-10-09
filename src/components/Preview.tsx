@@ -8,16 +8,21 @@ import {
   Square,
   FileQuestion,
   Image as ImageIcon,
+  Layers,
 } from 'lucide-react';
 import { Presentation, Slide, SlideElement, ThemeId } from '../models/presentation';
 import { THEMES } from '../themes/presentationThemes';
 import { computeAdaptiveTypography, computeSlideLayout } from '../renderer/layoutSystem';
+import { BatchPresentationItem } from '../parser/batchParser';
 
 interface PreviewProps {
   presentation: Presentation;
   themeId: ThemeId;
   activeSlideIndex: number;
   onSelectSlide: (index: number) => void;
+  batchItems?: BatchPresentationItem[];
+  selectedBatchIndex?: number;
+  onSelectBatchItem?: (index: number) => void;
 }
 
 export const Preview: React.FC<PreviewProps> = ({
@@ -25,6 +30,9 @@ export const Preview: React.FC<PreviewProps> = ({
   themeId,
   activeSlideIndex,
   onSelectSlide,
+  batchItems,
+  selectedBatchIndex = 0,
+  onSelectBatchItem,
 }) => {
   const [viewMode, setViewMode] = useState<'single' | 'grid'>('single');
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -95,6 +103,32 @@ export const Preview: React.FC<PreviewProps> = ({
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Multi-Deck Selector if multiple presentations present */}
+        {batchItems && batchItems.length > 1 && (
+          <div className="flex items-center gap-1.5 bg-slate-200/80 dark:bg-slate-800 px-2.5 py-1 rounded-md text-xs font-medium">
+            <Layers className="w-3.5 h-3.5 text-indigo-500 flex-none" />
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold uppercase">
+              Deck:
+            </span>
+            <select
+              value={selectedBatchIndex}
+              onChange={(e) => onSelectBatchItem?.(Number(e.target.value))}
+              aria-label="Select Presentation Deck"
+              className="bg-transparent border-none text-slate-800 dark:text-slate-200 font-semibold text-xs cursor-pointer focus:outline-none max-w-[150px] sm:max-w-[200px] truncate"
+            >
+              {batchItems.map((item, idx) => (
+                <option
+                  key={item.id}
+                  value={idx}
+                  className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                >
+                  {idx + 1}. {item.presentation.title || `Deck ${idx + 1}`} ({item.presentation.slides.length} slides)
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Center: Slide Pills / Thumbnails */}
         {totalSlides > 1 && viewMode === 'single' && (

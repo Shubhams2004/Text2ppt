@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { Presentation, Slide } from '../models/presentation';
-import { buildPptxPresentation } from './pptxRenderer';
+import { buildPptxPresentation, exportToPptxFile } from './pptxRenderer';
 import {
+  autoPaginateSlide,
+  autoPaginatePresentation,
   calculateFittedImageBounds,
   computeAdaptiveTypography,
   computeSlideLayout,
@@ -610,5 +612,182 @@ describe('Code2PPT Layout Engine & PPTX Renderer Tests', () => {
     const b64 = await pres.write({ outputType: 'base64' });
     assert.ok(typeof b64 === 'string');
     assert.ok(b64.length > 5000);
+  });
+
+  // 21. Automatically assigns overflowing elements to the next slide without text compression or deletion
+  it('automatically assigns overflowing text to next slide without compressing or removing text', () => {
+    // 14 distinct requirement items
+    const elements = Array.from({ length: 14 }, (_, i) => ({
+      id: `el-${i + 1}`,
+      type: 'bullet' as const,
+      content: `Comprehensive system requirement item ${i + 1} specifying operational constraints, security requirements, and scalable architecture rules.`,
+      line: i + 2,
+    }));
+
+    const slide: Slide = {
+      id: 'slide-1',
+      index: 0,
+      title: 'System Requirements',
+      line: 1,
+      elements,
+    };
+
+    const paginated = autoPaginateSlide(slide);
+    assert.ok(paginated.length >= 2, 'Slide must be split into at least 2 slides');
+    assert.equal(paginated[0].title, 'System Requirements');
+    assert.equal(paginated[1].title, 'System Requirements (Cont.)');
+
+    // Verify all original elements are preserved in exact order
+    const totalPaginatedElements = paginated.reduce(
+      (sum, s) => sum + s.elements.length,
+      0
+    );
+    assert.equal(totalPaginatedElements, 14, 'All 14 elements must be retained without deletion');
+
+    // Check that each slide has comfortable, uncompressed layout
+    for (const s of paginated) {
+      const layout = computeSlideLayout(s);
+      assert.ok(
+        layout.body.typography.fontSize >= 14,
+        'Font size must remain readable and not compressed to tiny text'
+      );
+      assert.equal(layout.body.isOverflowing, false, 'No paginated slide should overflow');
+    }
+  });
+
+  // 22. Preserves all content across continuation slides with (Cont.) naming across a full presentation
+  it('preserves all presentation content when auto-paginating multiple slides', () => {
+    const denseElements = Array.from({ length: 16 }, (_, i) => ({
+      id: `dense-${i + 1}`,
+      type: 'bullet' as const,
+      content: `Quarterly strategic initiative ${i + 1} detailing deliverables and enterprise milestones.`,
+      line: i + 2,
+    }));
+
+    const normalElements = [
+      { id: 'norm-1', type: 'text' as const, content: 'Normal paragraph 1', line: 2 },
+      { id: 'norm-2', type: 'text' as const, content: 'Normal paragraph 2', line: 3 },
+    ];
+
+    const presentation: Presentation = {
+      title: 'Corporate Strategy',
+      theme: 'modern',
+      slides: [
+        {
+          id: 's1',
+          index: 0,
+          title: 'Executive Overview',
+          line: 1,
+          elements: normalElements,
+        },
+        {
+          id: 's2',
+          index: 1,
+          title: 'Strategic Roadmap',
+          line: 4,
+          elements: denseElements,
+        },
+      ],
+    };
+
+    const paginated = autoPaginatePresentation(presentation);
+    assert.ok(paginated.slides.length >= 3, 'Deck must contain at least 3 slides after pagination');
+    assert.equal(paginated.slides[0].title, 'Executive Overview');
+    assert.equal(paginated.slides[1].title, 'Strategic Roadmap');
+    assert.equal(paginated.slides[2].title, 'Strategic Roadmap (Cont.)');
+
+    // Re-indexing check
+    for (let i = 0; i < paginated.slides.length; i++) {
+      assert.equal(paginated.slides[i].index, i);
+    }
+
+    // Verify content count
+    const totalRoadmapElements = paginated.slides
+      .filter((s) => s.title.startsWith('Strategic Roadmap'))
+      .reduce((sum, s) => sum + s.elements.length, 0);
+    assert.equal(totalRoadmapElements, 16, 'All 16 strategic roadmap elements must be preserved');
+  });
+
+  // 23. Automatically splits a single overly long paragraph across slides without losing text
+  it('splits a massive single paragraph across consecutive slides without truncation', () => {
+    const sentence1 = 'Modern distributed cloud architectures decouple storage from compute layers to provide elastic scalability across availability zones.';
+    const sentence2 = 'Container orchestration frameworks continuously monitor cluster health, autonomously provisioning replacement nodes upon hardware degradation.';
+    const sentence3 = 'Transactional persistence guarantees ACID compliance via distributed consensus protocols operating across geo-replicated data centers.';
+    const sentence4 = 'Automated telemetry pipelines stream operational metrics directly to real-time analytics engines for proactive anomaly detection.';
+    const sentence5 = 'Security enclaves safeguard sensitive customer data using hardware-level cryptographic key management and zero-trust verification.';
+    const sentence6 = 'Zero-downtime blue-green deployment pipelines validate health metrics before shifting production traffic to candidate builds.';
+    const sentence7 = 'Comprehensive audit logs record all administrative operations for compliance with stringent financial and healthcare mandates.';
+    const sentence8 = 'Edge computing nodes cache frequently accessed assets to minimize latency for end-user interactions globally.';
+
+    const massiveContent = [
+      sentence1,
+      sentence2,
+      sentence3,
+      sentence4,
+      sentence5,
+      sentence6,
+      sentence7,
+      sentence8,
+    ].join(' ');
+
+    const slide: Slide = {
+      id: 'massive-slide',
+      index: 0,
+      title: 'Distributed Systems Architecture',
+      line: 1,
+      elements: [
+        {
+          id: 'el-massive',
+          type: 'text',
+          content: massiveContent,
+          line: 2,
+        },
+      ],
+    };
+
+    const paginated = autoPaginateSlide(slide);
+    assert.ok(paginated.length >= 2, 'Massive text must be assigned to consecutive slides');
+
+    // Verify all original sentences are present across the paginated slides
+    const combinedText = paginated.map((s) => s.elements.map((e) => e.content).join(' ')).join(' ');
+    assert.ok(combinedText.includes(sentence1), 'Must contain sentence 1');
+    assert.ok(combinedText.includes(sentence4), 'Must contain sentence 4');
+    assert.ok(combinedText.includes(sentence8), 'Must contain sentence 8');
+  });
+
+  // 24. exportToPptxFile and buildPptxPresentation produce complete, downloadable PPTX with paginated slides
+  it('exports cleanly to PPTX with auto-paginated slides without compression or text loss', async () => {
+    const denseItems = Array.from({ length: 15 }, (_, i) => ({
+      id: `pt-${i + 1}`,
+      type: 'bullet' as const,
+      content: `Action item ${i + 1}: Implementation of critical workflow requirement with verified acceptance criteria.`,
+      line: i + 2,
+    }));
+
+    const presentation: Presentation = {
+      title: 'Action Items Deck',
+      theme: 'emerald',
+      slides: [
+        {
+          id: 'slide-actions',
+          index: 0,
+          title: 'Q4 Action Items',
+          line: 1,
+          elements: denseItems,
+        },
+      ],
+    };
+
+    // Build PPTX
+    const pres = buildPptxPresentation(presentation);
+    assert.ok(pres);
+    const b64 = await pres.write({ outputType: 'base64' });
+    assert.ok(typeof b64 === 'string');
+    assert.ok(b64.length > 5000);
+
+    // Test exportToPptxFile
+    const exportResult = await exportToPptxFile(presentation, { fileName: 'Action_Items' });
+    assert.equal(exportResult.success, true);
+    assert.equal(exportResult.fileName, 'Action_Items.pptx');
   });
 });

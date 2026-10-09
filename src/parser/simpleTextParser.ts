@@ -7,6 +7,7 @@ import {
   TextElement,
   ValidationIssue,
 } from '../models/presentation';
+import { countPresentationDeclarations, parseBatchPresentations } from './batchParser';
 
 /**
  * Recognized bullet markers:
@@ -46,6 +47,25 @@ const MD_H2_REGEX = /^#{2,3}\s+(.+)$/;
  * Fully compatible with the existing Layout Engine and PPTX Renderer.
  */
 export function parseSimpleText(rawText: string): ParseResult {
+  // Automatic routing: if input contains multiple presentation declarations, process all of them
+  const presentationCount = countPresentationDeclarations(rawText);
+  if (presentationCount > 1) {
+    const batchResult = parseBatchPresentations(rawText);
+    return {
+      presentation: batchResult.items[0]?.presentation || {
+        title: 'Untitled Presentation',
+        theme: 'modern',
+        slides: [],
+      },
+      issues: batchResult.issues,
+      hasErrors: batchResult.hasErrors,
+      isMultiPresentation: true,
+      totalPresentations: batchResult.totalPresentations,
+      presentations: batchResult.items.map((it) => it.presentation),
+      batchItems: batchResult.items,
+    };
+  }
+
   const issues: ValidationIssue[] = [];
   const lines = rawText.split(/\r?\n/);
 

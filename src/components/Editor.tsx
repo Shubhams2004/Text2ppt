@@ -13,6 +13,9 @@ import {
   Layers,
   ListOrdered,
   FileCode,
+  FileDown,
+  ChevronDown,
+  FileType,
 } from 'lucide-react';
 import { ValidationIssue } from '../models/presentation';
 import { isJavaScriptOrPptxCode, convertPptxJsToDsl } from '../parser/jsToDslConverter';
@@ -20,6 +23,7 @@ import { BatchManager } from './BatchManager';
 import { BatchPresentationItem } from '../parser/batchParser';
 
 export type InputMode = 'code' | 'simple-text' | 'batch';
+export type ExportFormat = 'pptx' | 'pdf';
 
 interface EditorProps {
   code: string;
@@ -39,8 +43,8 @@ interface EditorProps {
   onMoveUpBatchItem?: (index: number) => void;
   onMoveDownBatchItem?: (index: number) => void;
   onRemoveBatchItem?: (index: number) => void;
-  onExportSingleBatchItem?: (index: number) => void;
-  onExportAllBatchItems?: () => void;
+  onExportSingleBatchItem?: (index: number, format?: ExportFormat) => void;
+  onExportAllBatchItems?: (format?: ExportFormat) => void;
   isExportingAllBatch?: boolean;
   batchExportProgress?: { current: number; total: number } | null;
 }
@@ -68,8 +72,20 @@ export const Editor: React.FC<EditorProps> = ({
 }) => {
   const [copied, setCopied] = React.useState(false);
   const [batchSubView, setBatchSubView] = React.useState<'cards' | 'source'>('cards');
+  const [isBannerExportMenuOpen, setIsBannerExportMenuOpen] = React.useState(false);
+  const bannerExportRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const gutterRef = useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (bannerExportRef.current && !bannerExportRef.current.contains(e.target as Node)) {
+        setIsBannerExportMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const lines = code.split('\n');
   const lineCount = lines.length;
@@ -383,6 +399,90 @@ export const Editor: React.FC<EditorProps> = ({
         </div>
       </div>
 
+      {/* Multi-Presentation Detected Banner in Normal Editor */}
+      {mode !== 'batch' && batchItems.length > 1 && (
+        <div className="flex-none bg-indigo-50 dark:bg-indigo-950/80 border-b border-indigo-200 dark:border-indigo-800/80 px-3.5 py-2 flex items-center justify-between gap-3 text-xs flex-wrap animate-in fade-in slide-in-from-top-1 duration-150">
+          <div className="flex items-center gap-2 text-indigo-900 dark:text-indigo-200 min-w-0 flex-wrap">
+            <span className="flex items-center gap-1.5 font-semibold">
+              <Layers className="w-4 h-4 flex-none text-indigo-600 dark:text-indigo-400" />
+              <span>{batchItems.length} presentations detected:</span>
+            </span>
+
+            <select
+              value={selectedBatchIndex}
+              onChange={(e) => onSelectBatchItem(Number(e.target.value))}
+              className="bg-white dark:bg-slate-800 border border-indigo-300 dark:border-indigo-700 text-indigo-950 dark:text-indigo-100 rounded-md px-2 py-1 text-xs font-medium cursor-pointer shadow-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              title="Select presentation to preview"
+              aria-label="Select detected presentation to preview"
+            >
+              {batchItems.map((item, idx) => (
+                <option key={item.id} value={idx}>
+                  {idx + 1}. {item.presentation.title || `Presentation ${idx + 1}`} ({item.presentation.slides.length} slides)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="relative" ref={bannerExportRef}>
+              <div className="inline-flex rounded-md shadow-xs">
+                <button
+                  onClick={() => onExportAllBatchItems('pptx')}
+                  disabled={isExportingAllBatch || batchLimitExceeded}
+                  className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-l-md font-semibold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                  title="Export all detected presentations as separate .pptx files"
+                >
+                  <FileDown className="w-3.5 h-3.5" />
+                  <span>Export All ({batchItems.length})</span>
+                </button>
+                <button
+                  onClick={() => setIsBannerExportMenuOpen(!isBannerExportMenuOpen)}
+                  disabled={isExportingAllBatch || batchLimitExceeded}
+                  className="px-1.5 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-r-md font-semibold text-xs border-l border-indigo-500/50 transition-colors cursor-pointer"
+                  title="Choose export format (PPTX or PDF)"
+                  aria-label="Export options"
+                >
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+              </div>
+
+              {isBannerExportMenuOpen && (
+                <div className="absolute right-0 mt-1 w-44 bg-white dark:bg-slate-900 rounded-lg shadow-xl border border-indigo-200 dark:border-indigo-800 p-1 z-30 animate-in fade-in zoom-in-95 duration-100">
+                  <button
+                    onClick={() => {
+                      setIsBannerExportMenuOpen(false);
+                      onExportAllBatchItems('pptx');
+                    }}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                  >
+                    <FileDown className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>All as PPTX</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsBannerExportMenuOpen(false);
+                      onExportAllBatchItems('pdf');
+                    }}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                  >
+                    <FileType className="w-3.5 h-3.5 text-rose-600" />
+                    <span>All as PDF</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => onModeChange('batch')}
+              className="px-2.5 py-1 bg-white dark:bg-slate-800 hover:bg-indigo-100 dark:hover:bg-slate-700 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700 rounded-md font-medium text-xs flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
+              title="Open full batch manager"
+            >
+              <span>Batch Queue</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Editor Body: Either Batch Cards View or Textarea with Gutter */}
       {mode === 'batch' && batchSubView === 'cards' ? (
         <div className="flex-1 overflow-hidden flex flex-col">
@@ -400,6 +500,7 @@ export const Editor: React.FC<EditorProps> = ({
             onExportAll={onExportAllBatchItems}
             isExportingAll={isExportingAllBatch}
             exportProgress={batchExportProgress}
+            onPasteText={(pastedText) => onChange(pastedText)}
             onEditInSource={(line) => {
               setBatchSubView('source');
               setTimeout(() => {

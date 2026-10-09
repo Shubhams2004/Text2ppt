@@ -174,4 +174,8 @@ export interface ParseResult {
   presentation: Presentation;
   issues: ValidationIssue[];
   hasErrors: boolean;
+  isMultiPresentation?: boolean;
+  totalPresentations?: number;
+  presentations?: Presentation[];
+  batchItems?: any[];
 }
