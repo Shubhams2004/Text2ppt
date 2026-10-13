@@ -1,10 +1,18 @@
 import {
   BulletElement,
+  ImageElement,
   ParseResult,
   Presentation,
   Slide,
   SlideElement,
+  SlideLayout,
+  SlideTransition,
   TextElement,
+  TransitionDirection,
+  TransitionSpeed,
+  TransitionStyle,
+  VALID_SLIDE_LAYOUTS,
+  VALID_TRANSITION_STYLES,
   ValidationIssue,
 } from '../models/presentation';
 import { countPresentationDeclarations, parseBatchPresentations } from './batchParser';
@@ -35,6 +43,27 @@ const TITLE_PREFIX_REGEX = /^(?:title|presentation)\s*:\s*(.+)$/i;
  */
 const SLIDE_PREFIX_REGEX =
   /^(?:slide|heading)(?:\s+\d+\s*[:.-]|\s*:\s*|\s+\d+\s*$|\s+)(.*)$/i;
+
+/**
+ * Transition prefixes:
+ * - Transition: <style>
+ */
+const TRANSITION_PREFIX_REGEX = /^transition\s*:\s*(.+)$/i;
+
+/**
+ * Layout prefixes:
+ * - Layout: <layout>
+ */
+const LAYOUT_PREFIX_REGEX = /^layout\s*:\s*(.+)$/i;
+
+/**
+ * Image prefixes and markdown image syntax:
+ * - Image: <url>
+ * - Img: <url>
+ * - ![alt](url)
+ */
+const IMAGE_PREFIX_REGEX = /^(?:image|img)\s*:\s*(.+)$/i;
+const MD_IMAGE_REGEX = /^!\[([^\]]*)\]\(([^)]+)\)$/;
 
 /**
  * Markdown heading prefixes
@@ -115,6 +144,7 @@ export function parseSimpleText(rawText: string): ParseResult {
 
   let presentationTitle = '';
   let presentationTitleLine = 1;
+  let presentationTransition: SlideTransition | undefined = undefined;
   let firstHeadingFound = false;
 
   // First pass: detect explicit presentation title on early lines
@@ -231,6 +261,80 @@ export function parseSimpleText(rawText: string): ParseResult {
       }
       createSlide(slideTitle, lineNum);
       firstHeadingFound = true;
+      continue;
+    }
+
+    // Check for transition prefix: "Transition: fade" or "Transition: push"
+    const transitionMatch = trimmed.match(TRANSITION_PREFIX_REGEX);
+    if (transitionMatch) {
+      flushPendingText();
+      const rawVal = transitionMatch[1].replace(/^["']|["']$/g, '').trim().toLowerCase();
+      let baseStyle = rawVal;
+      let derivedDir: TransitionDirection | undefined = undefined;
+      const compoundMatch = baseStyle.match(/^(push|wipe|cover|pull)-([a-z]+)$/i);
+      if (compoundMatch) {
+        baseStyle = compoundMatch[1].toLowerCase();
+        derivedDir = compoundMatch[2].toLowerCase() as TransitionDirection;
+      }
+      if (baseStyle === 'slide') baseStyle = 'push';
+      else if (baseStyle === 'crossfade' || baseStyle === 'smooth') baseStyle = 'fade';
+
+      if (VALID_TRANSITION_STYLES.includes(baseStyle as TransitionStyle)) {
+        const trans: SlideTransition = {
+          style: baseStyle as TransitionStyle,
+          direction: derivedDir,
+        };
+        if (currentSlide !== null) {
+          (currentSlide as Slide).transition = trans;
+        } else {
+          presentationTransition = trans;
+        }
+      }
+      continue;
+    }
+
+    // Check for layout prefix: "Layout: two-column" or "Layout: full-image"
+    const layoutMatch = trimmed.match(LAYOUT_PREFIX_REGEX);
+    if (layoutMatch) {
+      flushPendingText();
+      const rawLayout = layoutMatch[1].replace(/^["']|["']$/g, '').trim().toLowerCase() as SlideLayout;
+      if (VALID_SLIDE_LAYOUTS.includes(rawLayout)) {
+        const slide = currentSlide ?? createSlide(presentationTitle || 'Visual Slide', lineNum);
+        firstHeadingFound = true;
+        slide.layout = rawLayout;
+      }
+      continue;
+    }
+
+    // Check for image prefix: "Image: <url>" or "![alt](url)"
+    const imageMatch = trimmed.match(IMAGE_PREFIX_REGEX);
+    const mdImageMatch = trimmed.match(MD_IMAGE_REGEX);
+    if (imageMatch || mdImageMatch) {
+      flushPendingText();
+      const rawUrl = imageMatch
+        ? imageMatch[1].replace(/^["']|["']$/g, '').trim()
+        : mdImageMatch![2].trim();
+      const altText = mdImageMatch ? mdImageMatch[1].trim() : undefined;
+
+      if (rawUrl) {
+        if (!currentSlide) {
+          const fallbackTitle = presentationTitle || 'Visual Slide';
+          createSlide(fallbackTitle, lineNum);
+          firstHeadingFound = true;
+        }
+
+        elementCounter++;
+        const imgEl: ImageElement = {
+          id: `el-${elementCounter}`,
+          type: 'image',
+          content: rawUrl,
+          src: rawUrl,
+          url: rawUrl,
+          alt: altText,
+          line: lineNum,
+        };
+        currentSlide!.elements.push(imgEl);
+      }
       continue;
     }
 
@@ -354,12 +458,22 @@ export function parseSimpleText(rawText: string): ParseResult {
     });
   }
 
+  // Apply presentation transition to slides if set
+  if (presentationTransition) {
+    slides.forEach((s) => {
+      if (!s.transition) {
+        s.transition = { ...presentationTransition };
+      }
+    });
+  }
+
   const hasErrors = issues.some((i) => i.severity === 'error');
 
   return {
     presentation: {
       title: presentationTitle,
       theme: 'modern',
+      transition: presentationTransition,
       slides,
     },
     issues,

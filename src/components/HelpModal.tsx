@@ -121,6 +121,42 @@ bullet "Point three"`;
                   Options: modern, ocean, emerald, sunset, dark.
                 </p>
               </div>
+
+              <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40">
+                <code className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 font-mono">
+                  image "url-or-data-uri"
+                </code>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Adds an image or background (also via AI Image toolbar button).
+                </p>
+              </div>
+
+              <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40">
+                <code className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 font-mono">
+                  transition "fade"
+                </code>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Slide transitions: fade, push, wipe, split, zoom, cut, etc.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40">
+                <code className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 font-mono">
+                  quote "Inspiring quote"
+                </code>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Adds an italicized stylized blockquote with accent border.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40">
+                <code className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 font-mono">
+                  layout "two-column"
+                </code>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Layouts: title, title-content, two-column, text-image, image-text, full-image, blank.
+                </p>
+              </div>
             </div>
           </div>
 

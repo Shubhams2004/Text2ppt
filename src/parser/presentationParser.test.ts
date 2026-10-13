@@ -441,4 +441,140 @@ slide "Slide 2" layout="image-text"
     assert.equal((result.presentation.slides[0].elements[1] as any).src, 'diag1.png');
     assert.equal((result.presentation.slides[1].elements[0] as any).src, 'diag2.jpg');
   });
+
+  // 24. Slide transition command
+  it('parses slide-level transition styles and attributes', () => {
+    const code = `presentation "Animated Pitch"
+slide "Intro"
+  transition "fade"
+  text "Welcome"
+
+slide "Product"
+  transition "push" dir="left" speed="slow"
+  bullet "Feature 1"`;
+
+    const result = parsePresentation(code);
+    assert.equal(result.hasErrors, false);
+    assert.equal(result.presentation.slides.length, 2);
+
+    const s1 = result.presentation.slides[0];
+    assert.ok(s1.transition, 'Slide 1 should have transition');
+    assert.equal(s1.transition.style, 'fade');
+
+    const s2 = result.presentation.slides[1];
+    assert.ok(s2.transition, 'Slide 2 should have transition');
+    assert.equal(s2.transition.style, 'push');
+    assert.equal(s2.transition.direction, 'left');
+    assert.equal(s2.transition.speed, 'slow');
+  });
+
+  // 25. Presentation-level default transition
+  it('parses presentation-level transition and propagates to slides without explicit transition', () => {
+    const code = `presentation "Global Animated Deck"
+transition "fade"
+
+slide "Slide 1"
+  text "Inherits fade"
+
+slide "Slide 2"
+  transition "wipe" dir="right"
+  text "Overrides with wipe"
+
+slide "Slide 3"
+  text "Inherits fade"`;
+
+    const result = parsePresentation(code);
+    assert.equal(result.hasErrors, false);
+    assert.equal(result.presentation.transition?.style, 'fade');
+
+    const s1 = result.presentation.slides[0];
+    assert.equal(s1.transition?.style, 'fade');
+
+    const s2 = result.presentation.slides[1];
+    assert.equal(s2.transition?.style, 'wipe');
+    assert.equal(s2.transition?.direction, 'right');
+
+    const s3 = result.presentation.slides[2];
+    assert.equal(s3.transition?.style, 'fade');
+  });
+
+  // 26. Unquoted and compound transition syntax
+  it('supports unquoted transition syntax and compound aliases', () => {
+    const code = `presentation "Aliases Deck"
+slide "Slide 1"
+  transition push
+  text "Unquoted push"
+
+slide "Slide 2"
+  transition push-left
+  bullet "Compound push-left"
+
+slide "Slide 3"
+  transition crossfade
+  bullet "Alias crossfade -> fade"`;
+
+    const result = parsePresentation(code);
+    assert.equal(result.hasErrors, false);
+
+    assert.equal(result.presentation.slides[0].transition?.style, 'push');
+    assert.equal(result.presentation.slides[1].transition?.style, 'push');
+    assert.equal(result.presentation.slides[1].transition?.direction, 'left');
+    assert.equal(result.presentation.slides[2].transition?.style, 'fade');
+  });
+
+  // 27. Error when transition style is missing
+  it('flags empty transition command with MISSING_ARGUMENT error', () => {
+    const code = `presentation "Error Deck"
+slide "Slide 1"
+  transition
+  text "Content"`;
+
+    const result = parsePresentation(code);
+    assert.equal(result.hasErrors, true);
+    const missingIssue = result.issues.find((i) => i.code === 'MISSING_ARGUMENT');
+    assert.ok(missingIssue, 'Should flag MISSING_ARGUMENT for empty transition');
+  });
+
+  // 28. Error when transition style is unsupported
+  it('flags unsupported transition style with INVALID_TRANSITION error', () => {
+    const code = `presentation "Error Deck"
+slide "Slide 1"
+  transition "hyperdrive"
+  text "Content"`;
+
+    const result = parsePresentation(code);
+    assert.equal(result.hasErrors, true);
+    const invalidIssue = result.issues.find((i) => i.code === 'INVALID_TRANSITION');
+    assert.ok(invalidIssue, 'Should flag INVALID_TRANSITION for unknown style');
+  });
+
+  // 29. Standalone layout command on slide
+  it('parses standalone layout command and assigns it to current slide', () => {
+    const code = `presentation "Layout Deck"
+slide "Overview"
+layout "full-image"
+image "https://example.com/bg.png"`;
+
+    const result = parsePresentation(code);
+    assert.equal(result.hasErrors, false);
+    assert.equal(result.presentation.slides.length, 1);
+    assert.equal(result.presentation.slides[0].layout, 'full-image');
+    assert.equal(result.presentation.slides[0].elements.length, 1);
+    assert.equal(result.presentation.slides[0].elements[0].type, 'image');
+  });
+
+  // 30. Standalone layout command before any slide initializes the first slide
+  it('initializes first slide when layout is used before any slide command', () => {
+    const code = `presentation "Quick Deck"
+layout "two-column"
+bullet "Left point"
+bullet "Right point"`;
+
+    const result = parsePresentation(code);
+    assert.equal(result.hasErrors, false);
+    assert.equal(result.presentation.slides.length, 1);
+    assert.equal(result.presentation.slides[0].layout, 'two-column');
+    assert.equal(result.presentation.slides[0].elements.length, 2);
+  });
 });
+

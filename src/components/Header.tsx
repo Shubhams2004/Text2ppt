@@ -9,6 +9,8 @@ import {
   Check,
   ChevronDown,
   FileType,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { Presentation, ThemeId } from '../models/presentation';
 import { THEMES } from '../themes/presentationThemes';
@@ -33,6 +35,8 @@ interface HeaderProps {
   totalBatchCount?: number;
   onExportAllBatch?: (format?: ExportFormat) => void;
   isExportingAllBatch?: boolean;
+  isDarkMode?: boolean;
+  onToggleDarkMode?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -52,6 +56,8 @@ export const Header: React.FC<HeaderProps> = ({
   totalBatchCount,
   onExportAllBatch,
   isExportingAllBatch,
+  isDarkMode = false,
+  onToggleDarkMode,
 }) => {
   const [isPresetsOpen, setIsPresetsOpen] = React.useState(false);
   const [isThemesOpen, setIsThemesOpen] = React.useState(false);
@@ -84,24 +90,24 @@ export const Header: React.FC<HeaderProps> = ({
   }, []);
 
   return (
-    <header className="sticky top-0 z-30 flex-none border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+    <header className="sticky top-0 z-30 flex-none border-b border-slate-200/90 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md">
+      <div className="max-w-7xl mx-auto px-2.5 sm:px-6 h-16 flex items-center justify-between gap-2 sm:gap-4">
         {/* Left: Branding & Title */}
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-indigo-700 text-white flex items-center justify-center shadow-xs">
-              <Layers className="w-5 h-5" />
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-600 to-violet-600 text-white flex items-center justify-center shadow-sm shadow-indigo-600/20 flex-none">
+              <Layers className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="font-bold text-slate-900 dark:text-slate-100 text-base tracking-tight">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <span className="font-bold text-slate-900 dark:text-slate-100 text-sm sm:text-base tracking-tight">
                   Code2PPT
                 </span>
-                <span className="text-[10px] font-medium tracking-wide uppercase px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
-                  Client-Side
+                <span className="text-[9px] font-bold tracking-widest uppercase px-1.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200/70 dark:border-indigo-800/70 hidden xs:inline-block">
+                  STUDIO
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-[140px] sm:max-w-[200px] md:max-w-xs">
+              <p className="text-[10px] sm:text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate max-w-[90px] xs:max-w-[130px] sm:max-w-[200px] md:max-w-xs">
                 {presentation.title || 'Untitled Presentation'}
               </p>
             </div>
@@ -109,10 +115,10 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Center: Mobile Tabs Switcher */}
-        <div className="flex md:hidden items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg text-xs font-medium">
+        <div className="flex md:hidden items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg text-xs font-medium flex-none">
           <button
             onClick={() => onMobileTabChange('editor')}
-            className={`px-3 py-1.5 rounded-md transition-all ${
+            className={`px-2.5 sm:px-3 py-1.5 rounded-md transition-all ${
               activeMobileTab === 'editor'
                 ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
                 : 'text-slate-600 dark:text-slate-400'
@@ -122,7 +128,7 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
           <button
             onClick={() => onMobileTabChange('preview')}
-            className={`px-3 py-1.5 rounded-md transition-all ${
+            className={`px-2.5 sm:px-3 py-1.5 rounded-md transition-all ${
               activeMobileTab === 'preview'
                 ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
                 : 'text-slate-600 dark:text-slate-400'
@@ -133,7 +139,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Right: Controls & Export */}
-        <div className="flex items-center gap-2 sm:gap-2.5">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 flex-none">
           {/* Examples Dropdown */}
           <div className="relative" ref={presetsRef}>
             <button
@@ -222,11 +228,23 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
 
+          {/* Theme Mode (Dark/Light) Toggle */}
+          {onToggleDarkMode && (
+            <button
+              onClick={onToggleDarkMode}
+              className="p-2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+              aria-label="Toggle dark/light theme"
+            >
+              {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-600" />}
+            </button>
+          )}
+
           {/* Help Button */}
           <button
             onClick={onOpenHelp}
-            className="p-2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
-            title="Syntax Cheat Sheet"
+            className="p-2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+            title="Syntax Cheat Sheet & Guide (Ctrl+/)"
           >
             <HelpCircle className="w-4 h-4" />
           </button>
@@ -234,8 +252,8 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Reset / Clear Button */}
           <button
             onClick={onReset}
-            className="hidden lg:flex p-2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
-            title="Reset code to default"
+            className="hidden lg:flex p-2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+            title="Reset code to default presentation"
           >
             <RotateCcw className="w-4 h-4" />
           </button>
@@ -317,7 +335,7 @@ export const Header: React.FC<HeaderProps> = ({
                     ? 'bg-indigo-600/80 hover:bg-indigo-600 text-white cursor-pointer'
                     : 'bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white disabled:opacity-50 disabled:cursor-not-allowed'
                 }`}
-                title="Download presentation as editable PowerPoint file (.pptx)"
+                title="Download presentation as editable PowerPoint file (.pptx) — Shortcut: Ctrl+S"
               >
                 {isExporting ? (
                   <>
@@ -331,8 +349,9 @@ export const Header: React.FC<HeaderProps> = ({
                   </>
                 ) : (
                   <>
-                    <FileDown className="w-4 h-4" />
-                    <span>Export PPTX</span>
+                    <FileDown className="w-4 h-4 flex-none" />
+                    <span className="hidden sm:inline">Export PPTX</span>
+                    <span className="sm:hidden">PPTX</span>
                   </>
                 )}
               </button>

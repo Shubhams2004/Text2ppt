@@ -16,11 +16,14 @@ import {
   FileDown,
   ChevronDown,
   FileType,
+  LayoutGrid,
+  Film,
 } from 'lucide-react';
 import { ValidationIssue } from '../models/presentation';
 import { isJavaScriptOrPptxCode, convertPptxJsToDsl } from '../parser/jsToDslConverter';
 import { BatchManager } from './BatchManager';
 import { BatchPresentationItem } from '../parser/batchParser';
+import { AiImageModal } from './AiImageModal';
 
 export type InputMode = 'code' | 'simple-text' | 'batch';
 export type ExportFormat = 'pptx' | 'pdf';
@@ -71,9 +74,15 @@ export const Editor: React.FC<EditorProps> = ({
   batchExportProgress = null,
 }) => {
   const [copied, setCopied] = React.useState(false);
+  const [isAiImageModalOpen, setIsAiImageModalOpen] = React.useState(false);
   const [batchSubView, setBatchSubView] = React.useState<'cards' | 'source'>('cards');
   const [isBannerExportMenuOpen, setIsBannerExportMenuOpen] = React.useState(false);
+  const [isLayoutMenuOpen, setIsLayoutMenuOpen] = React.useState(false);
+  const [isTransitionMenuOpen, setIsTransitionMenuOpen] = React.useState(false);
+
   const bannerExportRef = useRef<HTMLDivElement>(null);
+  const layoutMenuRef = useRef<HTMLDivElement>(null);
+  const transitionMenuRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const gutterRef = useRef<HTMLDivElement>(null);
 
@@ -81,6 +90,12 @@ export const Editor: React.FC<EditorProps> = ({
     function handleClickOutside(e: MouseEvent) {
       if (bannerExportRef.current && !bannerExportRef.current.contains(e.target as Node)) {
         setIsBannerExportMenuOpen(false);
+      }
+      if (layoutMenuRef.current && !layoutMenuRef.current.contains(e.target as Node)) {
+        setIsLayoutMenuOpen(false);
+      }
+      if (transitionMenuRef.current && !transitionMenuRef.current.contains(e.target as Node)) {
+        setIsTransitionMenuOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -201,10 +216,10 @@ export const Editor: React.FC<EditorProps> = ({
       )}
 
       {/* Editor Toolbar with Mode Switcher */}
-      <div className="flex-none px-4 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/70 flex items-center justify-between gap-2 text-xs flex-wrap">
-        <div className="flex items-center gap-2">
+      <div className="flex-none px-3 sm:px-4 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/70 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 text-xs">
+        <div className="flex items-center justify-between sm:justify-start gap-2 overflow-x-auto py-0.5">
           {/* Mode Switcher */}
-          <div className="flex items-center bg-slate-200/80 dark:bg-slate-800 p-0.5 rounded-lg text-xs">
+          <div className="flex items-center bg-slate-200/80 dark:bg-slate-800 p-0.5 rounded-lg text-xs flex-none">
             <button
               onClick={() => onModeChange('code')}
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-all cursor-pointer ${
@@ -282,17 +297,145 @@ export const Editor: React.FC<EditorProps> = ({
         </div>
 
         {/* Quick Insert Buttons */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 max-w-full flex-none">
           {mode === 'code' ? (
             <>
               <button
                 onClick={() => handleInsertSnippet('slide "New Slide"')}
-                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-200/60 dark:hover:bg-slate-800 rounded transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700/80 rounded-md border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer shadow-2xs"
                 title="Insert a new slide"
               >
-                <Plus className="w-3 h-3" />
+                <Plus className="w-3 h-3 text-indigo-500" />
                 Slide
               </button>
+
+              {/* Layout Dropdown */}
+              <div className="relative" ref={layoutMenuRef}>
+                <button
+                  onClick={() => {
+                    setIsLayoutMenuOpen(!isLayoutMenuOpen);
+                    setIsTransitionMenuOpen(false);
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700/80 rounded-md border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer shadow-2xs"
+                  title="Insert slide with specific layout"
+                >
+                  <LayoutGrid className="w-3 h-3 text-indigo-500" />
+                  <span>Layout</span>
+                  <ChevronDown className="w-2.5 h-2.5 text-slate-400" />
+                </button>
+
+                {isLayoutMenuOpen && (
+                  <div className="absolute left-0 mt-1.5 w-52 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 p-1.5 z-40 animate-in fade-in zoom-in-95 duration-100">
+                    <div className="px-2 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                      Slide Layouts
+                    </div>
+                    <button
+                      onClick={() => {
+                        handleInsertSnippet('slide "Comparison" layout="two-column"\nbullet "Left column item"\nbullet "Right column item"');
+                        setIsLayoutMenuOpen(false);
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    >
+                      <div className="font-medium text-slate-800 dark:text-slate-200">Two Column</div>
+                      <div className="text-[10px] text-slate-400">Side-by-side elements</div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleInsertSnippet('slide "Visual Overview" layout="image-text"\nimage "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&q=80"\ntext "Description of key feature or metric"');
+                        setIsLayoutMenuOpen(false);
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    >
+                      <div className="font-medium text-slate-800 dark:text-slate-200">Image & Text</div>
+                      <div className="text-[10px] text-slate-400">Image on left, text on right</div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleInsertSnippet('slide "Feature Spotlight" layout="text-image"\ntext "Summary of capability"\nimage "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&q=80"');
+                        setIsLayoutMenuOpen(false);
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    >
+                      <div className="font-medium text-slate-800 dark:text-slate-200">Text & Image</div>
+                      <div className="text-[10px] text-slate-400">Text on left, image on right</div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleInsertSnippet('slide "Visual Showcase" layout="full-image"\nimage "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&q=80"');
+                        setIsLayoutMenuOpen(false);
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    >
+                      <div className="font-medium text-slate-800 dark:text-slate-200">Full Image</div>
+                      <div className="text-[10px] text-slate-400">Large centered image canvas</div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleInsertSnippet('slide "Welcome" layout="title"\nsubtitle "Presentation subtitle"');
+                        setIsLayoutMenuOpen(false);
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    >
+                      <div className="font-medium text-slate-800 dark:text-slate-200">Cover Slide</div>
+                      <div className="text-[10px] text-slate-400">Title hero layout</div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleInsertSnippet('slide "Blank Canvas" layout="blank"');
+                        setIsLayoutMenuOpen(false);
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    >
+                      <div className="font-medium text-slate-800 dark:text-slate-200">Blank Slide</div>
+                      <div className="text-[10px] text-slate-400">No header or dividers</div>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Transition Dropdown */}
+              <div className="relative" ref={transitionMenuRef}>
+                <button
+                  onClick={() => {
+                    setIsTransitionMenuOpen(!isTransitionMenuOpen);
+                    setIsLayoutMenuOpen(false);
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700/80 rounded-md border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer shadow-2xs"
+                  title="Insert slide transition"
+                >
+                  <Film className="w-3 h-3 text-indigo-500" />
+                  <span>Transition</span>
+                  <ChevronDown className="w-2.5 h-2.5 text-slate-400" />
+                </button>
+
+                {isTransitionMenuOpen && (
+                  <div className="absolute left-0 mt-1.5 w-44 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 p-1.5 z-40 animate-in fade-in zoom-in-95 duration-100">
+                    <div className="px-2 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                      Slide Transitions
+                    </div>
+                    {[
+                      { name: 'Fade', code: 'transition "fade"' },
+                      { name: 'Push Left', code: 'transition "push" dir="left"' },
+                      { name: 'Push Up', code: 'transition "push" dir="up"' },
+                      { name: 'Zoom', code: 'transition "zoom"' },
+                      { name: 'Wipe', code: 'transition "wipe"' },
+                      { name: 'Split', code: 'transition "split"' },
+                    ].map((tr) => (
+                      <button
+                        key={tr.name}
+                        onClick={() => {
+                          handleInsertSnippet(tr.code);
+                          setIsTransitionMenuOpen(false);
+                        }}
+                        className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-slate-800 font-medium text-slate-800 dark:text-slate-200 transition-colors cursor-pointer"
+                      >
+                        {tr.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <button
                 onClick={() => handleInsertSnippet('bullet "New key point"')}
                 className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-200/60 dark:hover:bg-slate-800 rounded transition-colors cursor-pointer"
@@ -313,28 +456,54 @@ export const Editor: React.FC<EditorProps> = ({
           ) : mode === 'simple-text' ? (
             <>
               <button
-                onClick={() => handleInsertSnippet('\n\nNew Slide Heading\n- First point')}
-                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-200/60 dark:hover:bg-slate-800 rounded transition-colors cursor-pointer"
+                onClick={() => handleInsertSnippet('\n\nSlide: New Slide\n- First point')}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700/80 rounded-md border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer shadow-2xs"
                 title="Insert a new slide section"
               >
-                <Plus className="w-3 h-3" />
+                <Plus className="w-3 h-3 text-indigo-500" />
                 Section
               </button>
+
+              {/* Simple Text Layout Dropdown */}
+              <div className="relative" ref={layoutMenuRef}>
+                <button
+                  onClick={() => setIsLayoutMenuOpen(!isLayoutMenuOpen)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700/80 rounded-md border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer shadow-2xs"
+                  title="Insert layout"
+                >
+                  <LayoutGrid className="w-3 h-3 text-indigo-500" />
+                  <span>Layout</span>
+                  <ChevronDown className="w-2.5 h-2.5 text-slate-400" />
+                </button>
+                {isLayoutMenuOpen && (
+                  <div className="absolute left-0 mt-1.5 w-48 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 p-1.5 z-40 animate-in fade-in zoom-in-95 duration-100">
+                    {[
+                      { name: 'Two Column', snippet: '\nLayout: two-column\n- Column 1\n- Column 2' },
+                      { name: 'Image & Text', snippet: '\nLayout: image-text\nImage: https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&q=80\nDetailed description...' },
+                      { name: 'Full Image', snippet: '\nLayout: full-image\nImage: https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&q=80' },
+                    ].map((item) => (
+                      <button
+                        key={item.name}
+                        onClick={() => {
+                          handleInsertSnippet(item.snippet);
+                          setIsLayoutMenuOpen(false);
+                        }}
+                        className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-slate-800 font-medium text-slate-800 dark:text-slate-200 transition-colors cursor-pointer"
+                      >
+                        {item.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <button
                 onClick={() => handleInsertSnippet('\n- New bullet point')}
                 className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-200/60 dark:hover:bg-slate-800 rounded transition-colors cursor-pointer"
                 title="Insert a bullet point"
               >
                 <Plus className="w-3 h-3" />
-                Bullet (-)
-              </button>
-              <button
-                onClick={() => handleInsertSnippet('\n• Point with bullet mark')}
-                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-200/60 dark:hover:bg-slate-800 rounded transition-colors cursor-pointer"
-                title="Insert a unicode bullet point"
-              >
-                <Plus className="w-3 h-3" />
-                Bullet (•)
+                Bullet
               </button>
             </>
           ) : (
@@ -346,10 +515,10 @@ export const Editor: React.FC<EditorProps> = ({
                     `\n\nPRESENTATION: ${batchItems.length + 1}\nTITLE: New Deck\n\nSLIDE: Overview\nTEXT: Overview content...`
                   );
                 }}
-                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-200/60 dark:hover:bg-slate-800 rounded transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700/80 rounded-md border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer shadow-2xs"
                 title="Insert a new presentation block"
               >
-                <Plus className="w-3 h-3" />
+                <Plus className="w-3 h-3 text-indigo-500" />
                 Deck
               </button>
               <button
@@ -376,6 +545,18 @@ export const Editor: React.FC<EditorProps> = ({
               </button>
             </>
           )}
+
+          <div className="w-px h-4 bg-slate-300 dark:bg-slate-700 mx-0.5" />
+
+          {/* AI Image Generation Button */}
+          <button
+            onClick={() => setIsAiImageModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/70 hover:bg-indigo-100 dark:hover:bg-indigo-900 border border-indigo-200/80 dark:border-indigo-800 rounded-md transition-all cursor-pointer shadow-2xs hover:shadow-xs group"
+            title="Generate slide background or decorative image with AI"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-indigo-500 group-hover:rotate-12 transition-transform" />
+            <span>AI Image</span>
+          </button>
 
           <div className="w-px h-4 bg-slate-300 dark:bg-slate-700 mx-1" />
 
@@ -589,6 +770,14 @@ export const Editor: React.FC<EditorProps> = ({
           </div>
         </div>
       )}
+
+      {/* AI Image Generation Modal */}
+      <AiImageModal
+        isOpen={isAiImageModalOpen}
+        onClose={() => setIsAiImageModalOpen(false)}
+        onInsertImage={handleInsertSnippet}
+        currentMode={mode}
+      />
     </div>
   );
 };

@@ -25,6 +25,7 @@ Paste your content, get an editable `.pptx` file—no design skills required.
 |---------|--------|
 | Simple text → PPTX | 🔜 Coming Next |
 | 7 professional layouts | ✅ |
+| Slide transitions (fade, push, wipe, etc.) | ✅ |
 | Text wrapping & overflow handling | ✅ |
 | Editable PowerPoint output | ✅ |
 | Batch import (20+ presentations) | 📋 Planned |

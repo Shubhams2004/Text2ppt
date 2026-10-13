@@ -61,9 +61,9 @@ export const ValidationStatus: React.FC<ValidationStatusProps> = ({
         {/* Right: Toggle details */}
         <div className="flex items-center gap-2 flex-none">
           <div className="hidden sm:flex items-center gap-2 text-slate-400 dark:text-slate-500 text-[11px]">
-            <span>DSL v1.0</span>
+            <span>16:9 Widescreen</span>
             <span>·</span>
-            <span>PptxGenJS Engine</span>
+            <span>Ctrl+S to Export</span>
           </div>
 
           {issues.length > 0 && (

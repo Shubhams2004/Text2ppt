@@ -120,12 +120,77 @@ export const VALID_SLIDE_LAYOUTS: readonly SlideLayout[] = [
   'blank',
 ] as const;
 
+export type TransitionStyle =
+  | 'none'
+  | 'fade'
+  | 'push'
+  | 'wipe'
+  | 'split'
+  | 'cut'
+  | 'zoom'
+  | 'dissolve'
+  | 'blinds'
+  | 'checker'
+  | 'circle'
+  | 'diamond'
+  | 'comb'
+  | 'cover'
+  | 'pull'
+  | 'wheel'
+  | 'newsflash';
+
+export const VALID_TRANSITION_STYLES: readonly TransitionStyle[] = [
+  'none',
+  'fade',
+  'push',
+  'wipe',
+  'split',
+  'cut',
+  'zoom',
+  'dissolve',
+  'blinds',
+  'checker',
+  'circle',
+  'diamond',
+  'comb',
+  'cover',
+  'pull',
+  'wheel',
+  'newsflash',
+] as const;
+
+export type TransitionDirection =
+  | 'left'
+  | 'right'
+  | 'up'
+  | 'down'
+  | 'horz'
+  | 'vert'
+  | 'horizontal'
+  | 'vertical'
+  | 'in'
+  | 'out'
+  | 'l'
+  | 'r'
+  | 'u'
+  | 'd';
+
+export type TransitionSpeed = 'slow' | 'med' | 'fast';
+
+export interface SlideTransition {
+  style: TransitionStyle;
+  direction?: TransitionDirection;
+  speed?: TransitionSpeed;
+  duration?: number;
+}
+
 export interface Slide {
   id: string;
   index: number;
   title: string;
   line: number;
   layout?: SlideLayout;
+  transition?: SlideTransition;
   elements: SlideElement[];
 }
 
@@ -138,6 +203,7 @@ export interface PresentationMetadata {
 export interface Presentation {
   title: string;
   theme: ThemeId;
+  transition?: SlideTransition;
   slides: Slide[];
   metadata?: PresentationMetadata;
 }
@@ -152,6 +218,7 @@ export type IssueCode =
   | 'EMPTY_SLIDE'
   | 'INVALID_COMMAND'
   | 'INVALID_LAYOUT'
+  | 'INVALID_TRANSITION'
   | 'MISSING_IMAGE_PATH'
   | 'INVALID_IMAGE_PATH'
   | 'CONTENT_BEFORE_SLIDE'

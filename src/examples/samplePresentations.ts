@@ -36,31 +36,29 @@ bullet "Automated clinical workflows"`,
   {
     id: 'product-pitch',
     name: 'Project Pitch',
-    description: 'A multi-slide startup or project pitch',
+    description: 'A multi-slide startup pitch showcasing two-column layout and subtitles',
     code: `presentation "Project Nova: AI Edge Engine"
 theme "ocean"
 
+slide "Project Nova" layout="title"
+subtitle "The Next-Generation Micro-Inference Platform for Edge Hardware"
+
 slide "Executive Summary"
-text "Project Nova is the next-generation micro-inference platform designed for edge devices."
-subtitle "Delivering sub-10ms response times without cloud latency."
+text "Project Nova enables real-time on-device artificial intelligence without cloud roundtrips."
+subtitle "Sub-10ms neural execution with zero cloud bandwidth requirements."
 
-slide "The Problem"
+slide "Problem & Solution" layout="two-column"
 bullet "Cloud API calls introduce 150-400ms latency"
-bullet "Offline devices cannot process intelligent workflows"
-bullet "Bandwidth and telemetry costs scale non-linearly"
-bullet "Privacy and compliance restrict outbound data transfer"
-
-slide "Our Solution"
-bullet "Zero-network on-device execution engine"
-bullet "Ultra-compact 4-bit quantized neural runtimes"
-bullet "Native integration with TypeScript and WebAssembly"
+bullet "Offline hardware cannot execute cloud workflows"
+bullet "On-device zero-network micro-kernel"
 bullet "Hardware-accelerated WebGPU fallback pipeline"
 
-slide "Roadmap & Next Steps"
-bullet "Q1: Developer Preview & SDK release"
-bullet "Q2: Automated quantization pipeline"
-bullet "Q3: Enterprise security & deployment tier"
-text "Contact the Nova team at dev@projectnova.internal"`,
+slide "Strategic Roadmap"
+transition "fade"
+bullet "Q1: Developer Preview & Core SDK release"
+bullet "Q2: Automated model quantization pipeline"
+bullet "Q3: Enterprise security & on-premise orchestrator"
+quote "Empowering every connected device with instantaneous intelligence."`,
   },
   {
     id: 'architecture-brief',
@@ -74,12 +72,14 @@ text "Code2PPT operates purely client-side without servers, databases, or cloud 
 subtitle "Fast, private, and deterministic presentation generation."
 
 slide "Core Pipeline"
+transition "fade"
 bullet "Lexer & Parser: Validates DSL syntax and builds AST"
 bullet "Presentation Model: Strongly-typed intermediate representation"
 bullet "Preview Engine: Live synchronized 16:9 React canvas"
 bullet "PptxGenJS Bridge: Converts AST into binary PowerPoint .pptx"
 
 slide "Browser-First Benefits"
+transition "push" dir="left"
 bullet "Zero telemetry or server roundtrips"
 bullet "Instant live preview updates while typing"
 bullet "Native Microsoft PowerPoint compatibility (.pptx)"

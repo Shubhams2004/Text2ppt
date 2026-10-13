@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -9,11 +10,165 @@ import {
   FileQuestion,
   Image as ImageIcon,
   Layers,
+  Sparkles,
+  RotateCw,
 } from 'lucide-react';
-import { Presentation, Slide, SlideElement, ThemeId } from '../models/presentation';
+import { Presentation, Slide, SlideElement, ThemeId, SlideTransition } from '../models/presentation';
 import { THEMES } from '../themes/presentationThemes';
 import { computeAdaptiveTypography, computeSlideLayout } from '../renderer/layoutSystem';
 import { BatchPresentationItem } from '../parser/batchParser';
+
+/**
+ * Slide transition variants for Framer Motion
+ */
+function getSlideVariants(transition?: SlideTransition, navDir: number = 1) {
+  const style = transition?.style;
+  const direction = transition?.direction;
+
+  if (style === 'none') {
+    return {
+      initial: { opacity: 1 },
+      animate: { opacity: 1 },
+      exit: { opacity: 1 },
+    };
+  }
+
+  if (style === 'cut') {
+    return {
+      initial: { opacity: 0 },
+      animate: { opacity: 1 },
+      exit: { opacity: 0 },
+    };
+  }
+
+  if (style === 'fade') {
+    return {
+      initial: { opacity: 0 },
+      animate: { opacity: 1 },
+      exit: { opacity: 0 },
+    };
+  }
+
+  if (style === 'push') {
+    const effDir = direction || (navDir >= 0 ? 'left' : 'right');
+    let xIn: string | number = 0;
+    let xExit: string | number = 0;
+    let yIn: string | number = 0;
+    let yExit: string | number = 0;
+
+    if (effDir === 'left' || effDir === 'l') {
+      xIn = '100%';
+      xExit = '-100%';
+    } else if (effDir === 'right' || effDir === 'r') {
+      xIn = '-100%';
+      xExit = '100%';
+    } else if (effDir === 'up' || effDir === 'u') {
+      yIn = '100%';
+      yExit = '-100%';
+    } else if (effDir === 'down' || effDir === 'd') {
+      yIn = '-100%';
+      yExit = '100%';
+    } else {
+      xIn = navDir >= 0 ? '100%' : '-100%';
+      xExit = navDir >= 0 ? '-100%' : '100%';
+    }
+
+    return {
+      initial: { x: xIn, y: yIn, opacity: 1 },
+      animate: { x: 0, y: 0, opacity: 1 },
+      exit: { x: xExit, y: yExit, opacity: 1 },
+    };
+  }
+
+  if (style === 'zoom') {
+    return {
+      initial: { scale: 0.82, opacity: 0 },
+      animate: { scale: 1, opacity: 1 },
+      exit: { scale: 1.15, opacity: 0 },
+    };
+  }
+
+  if (style === 'wipe') {
+    const effDir = direction || (navDir >= 0 ? 'left' : 'right');
+    const initialClip =
+      effDir === 'right' || effDir === 'r'
+        ? 'inset(0 0 0 100%)'
+        : effDir === 'up' || effDir === 'u'
+        ? 'inset(100% 0 0 0)'
+        : effDir === 'down' || effDir === 'd'
+        ? 'inset(0 0 100% 0)'
+        : 'inset(0 100% 0 0)';
+
+    return {
+      initial: { clipPath: initialClip, opacity: 1 },
+      animate: { clipPath: 'inset(0 0% 0 0)', opacity: 1 },
+      exit: { opacity: 0.2 },
+    };
+  }
+
+  if (style === 'split') {
+    return {
+      initial: { scaleY: 0.05, opacity: 0 },
+      animate: { scaleY: 1, opacity: 1 },
+      exit: { scaleY: 0.05, opacity: 0 },
+    };
+  }
+
+  if (style === 'dissolve') {
+    return {
+      initial: { opacity: 0, filter: 'blur(8px)' },
+      animate: { opacity: 1, filter: 'blur(0px)' },
+      exit: { opacity: 0, filter: 'blur(8px)' },
+    };
+  }
+
+  // Refined default transition effect for seamless navigation
+  return {
+    initial: {
+      x: navDir >= 0 ? '6%' : '-6%',
+      opacity: 0,
+      scale: 0.985,
+    },
+    animate: {
+      x: 0,
+      opacity: 1,
+      scale: 1,
+    },
+    exit: {
+      x: navDir >= 0 ? '-6%' : '6%',
+      opacity: 0,
+      scale: 0.985,
+    },
+  };
+}
+
+/**
+ * Slide transition timing configuration
+ */
+function getSlideTransitionTiming(transition?: SlideTransition) {
+  if (transition?.style === 'none') {
+    return { duration: 0 };
+  }
+  if (transition?.style === 'cut') {
+    return { duration: 0.04, ease: 'linear' as const };
+  }
+
+  let duration = 0.32;
+  if (typeof transition?.duration === 'number' && transition.duration > 0) {
+    duration = Math.min(3, transition.duration);
+  } else if (transition?.speed === 'fast') {
+    duration = 0.18;
+  } else if (transition?.speed === 'slow') {
+    duration = 0.55;
+  } else if (transition?.speed === 'med') {
+    duration = 0.32;
+  }
+
+  return {
+    duration,
+    ease: [0.22, 1, 0.36, 1] as const,
+  };
+}
 
 interface PreviewProps {
   presentation: Presentation;
@@ -36,11 +191,20 @@ export const Preview: React.FC<PreviewProps> = ({
 }) => {
   const [viewMode, setViewMode] = useState<'single' | 'grid'>('single');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [replayCount, setReplayCount] = useState(0);
 
   const theme = THEMES[themeId] || THEMES.modern;
   const slides = presentation.slides;
   const totalSlides = slides.length;
   const currentSlide: Slide | undefined = slides[activeSlideIndex] || slides[0];
+  const activeTransition = currentSlide?.transition || presentation.transition;
+
+  // Track slide navigation direction to power direction-aware transitions
+  const prevSlideIndexRef = useRef(activeSlideIndex);
+  const navDirection = activeSlideIndex >= prevSlideIndexRef.current ? 1 : -1;
+  useEffect(() => {
+    prevSlideIndexRef.current = activeSlideIndex;
+  }, [activeSlideIndex]);
 
   // Keyboard navigation for presentation
   useEffect(() => {
@@ -130,23 +294,47 @@ export const Preview: React.FC<PreviewProps> = ({
           </div>
         )}
 
-        {/* Center: Slide Pills / Thumbnails */}
-        {totalSlides > 1 && viewMode === 'single' && (
-          <div className="hidden sm:flex items-center gap-1 max-w-[200px] md:max-w-xs overflow-x-auto py-0.5">
-            {slides.map((_, idx) => (
-              <button
-                key={idx}
-                onClick={() => onSelectSlide(idx)}
-                className={`h-2 rounded-full transition-all ${
-                  idx === activeSlideIndex
-                    ? 'w-6 bg-indigo-600'
-                    : 'w-2 bg-slate-300 dark:bg-slate-700 hover:bg-slate-400'
-                }`}
-                title={`Go to Slide ${idx + 1}`}
-              />
-            ))}
-          </div>
-        )}
+        {/* Center: Slide Pills / Thumbnails and Transition indicator */}
+        <div className="flex items-center gap-2">
+          {totalSlides > 1 && viewMode === 'single' && (
+            <div className="hidden sm:flex items-center gap-1 max-w-[200px] md:max-w-xs overflow-x-auto py-0.5">
+              {slides.map((_, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => onSelectSlide(idx)}
+                  className={`h-2 rounded-full transition-all ${
+                    idx === activeSlideIndex
+                      ? 'w-6 bg-indigo-600'
+                      : 'w-2 bg-slate-300 dark:bg-slate-700 hover:bg-slate-400'
+                  }`}
+                  title={`Go to Slide ${idx + 1}`}
+                />
+              ))}
+            </div>
+          )}
+
+          {activeTransition && activeTransition.style !== 'none' && (
+            <button
+              onClick={() => setReplayCount((c) => c + 1)}
+              className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80 shadow-2xs hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-all cursor-pointer group"
+              title={`Slide transition: ${activeTransition.style}${activeTransition.direction ? ` (${activeTransition.direction})` : ''}${activeTransition.speed ? ` [${activeTransition.speed}]` : ''} • Click to replay effect`}
+            >
+              <Sparkles className="w-3 h-3 text-indigo-500 group-hover:rotate-12 transition-transform" />
+              <span className="capitalize">{activeTransition.style}</span>
+              {activeTransition.direction && (
+                <span className="text-[10px] text-indigo-400 uppercase">
+                  {activeTransition.direction}
+                </span>
+              )}
+              {activeTransition.speed && (
+                <span className="text-[10px] text-indigo-400">
+                  {activeTransition.speed}
+                </span>
+              )}
+              <RotateCw className="w-2.5 h-2.5 opacity-50 group-hover:opacity-100 transition-opacity ml-0.5" />
+            </button>
+          )}
+        </div>
 
         {/* Right: View Toggles & Fullscreen */}
         <div className="flex items-center gap-1">
@@ -222,9 +410,16 @@ export const Preview: React.FC<PreviewProps> = ({
                   <span className="font-medium text-slate-700 dark:text-slate-300 truncate">
                     {index + 1}. {s.title}
                   </span>
-                  <span className="text-[10px] text-slate-400">
-                    {s.elements.length} {s.elements.length === 1 ? 'item' : 'items'}
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-none">
+                    {s.transition && s.transition.style !== 'none' && (
+                      <span className="text-[10px] text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.2 rounded font-medium">
+                        {s.transition.style}
+                      </span>
+                    )}
+                    <span className="text-[10px] text-slate-400">
+                      {s.elements.length} {s.elements.length === 1 ? 'item' : 'items'}
+                    </span>
+                  </div>
                 </div>
               </div>
             ))}
@@ -232,34 +427,108 @@ export const Preview: React.FC<PreviewProps> = ({
         ) : (
           // Single Slide View
           <div className="w-full max-w-4xl flex flex-col items-center">
-            <div className="w-full relative aspect-[16/9] rounded-xl overflow-hidden shadow-xl ring-1 ring-black/5 dark:ring-white/10 transition-all">
-              {currentSlide && (
-                <SlideCanvas
-                  slide={currentSlide}
-                  slideIndex={activeSlideIndex}
-                  totalSlides={totalSlides}
-                  presentationTitle={presentation.title}
-                  theme={theme}
-                />
-              )}
+            {/* Slide Stage Container */}
+            <div
+              className="w-full relative aspect-[16/9] rounded-2xl overflow-hidden shadow-2xl shadow-slate-900/15 dark:shadow-black/50 ring-1 ring-slate-900/10 dark:ring-white/10 transition-all"
+              style={{ backgroundColor: theme.bgColor }}
+            >
+              <AnimatePresence mode="popLayout" custom={navDirection} initial={false}>
+                {currentSlide && (
+                  <motion.div
+                    key={`${currentSlide.id || activeSlideIndex}-${replayCount}`}
+                    custom={navDirection}
+                    variants={getSlideVariants(activeTransition, navDirection)}
+                    initial="initial"
+                    animate="animate"
+                    exit="exit"
+                    transition={getSlideTransitionTiming(activeTransition)}
+                    className="w-full h-full"
+                  >
+                    <SlideCanvas
+                      slide={currentSlide}
+                      slideIndex={activeSlideIndex}
+                      totalSlides={totalSlides}
+                      presentationTitle={presentation.title}
+                      theme={theme}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
-            {/* Sub-bar showing quick jump buttons */}
-            {totalSlides > 1 && (
-              <div className="flex items-center gap-2 mt-4 overflow-x-auto max-w-full px-2 py-1">
+            {/* Elevated Interactive Filmstrip */}
+            {totalSlides > 1 && !isFullscreen && (
+              <div className="flex items-center gap-1.5 mt-5 overflow-x-auto max-w-full px-2 py-1.5 scrollbar-thin">
                 {slides.map((s, idx) => (
                   <button
                     key={idx}
                     onClick={() => onSelectSlide(idx)}
-                    className={`px-3 py-1 text-xs rounded-lg font-medium transition-all ${
+                    className={`group px-3 py-1.5 text-xs rounded-xl font-medium flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
                       idx === activeSlideIndex
-                        ? 'bg-indigo-600 text-white shadow-xs'
-                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+                        ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30 font-semibold'
+                        : 'bg-white dark:bg-slate-900/90 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200/90 dark:border-slate-800'
                     }`}
+                    title={`Jump to slide ${idx + 1}: ${s.title}`}
                   >
-                    {idx + 1}. {s.title || `Slide ${idx + 1}`}
+                    <span
+                      className={`w-4 h-4 rounded-md text-[10px] font-bold flex items-center justify-center ${
+                        idx === activeSlideIndex
+                          ? 'bg-white/20 text-white'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 group-hover:bg-indigo-50 dark:group-hover:bg-indigo-950/60 group-hover:text-indigo-600'
+                      }`}
+                    >
+                      {idx + 1}
+                    </span>
+                    <span className="truncate max-w-[120px] sm:max-w-[160px]">
+                      {s.title || `Slide ${idx + 1}`}
+                    </span>
+                    {s.layout && s.layout !== 'title-content' && (
+                      <span
+                        className={`text-[9px] uppercase px-1 rounded font-semibold ${
+                          idx === activeSlideIndex
+                            ? 'bg-white/20 text-white'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                        }`}
+                      >
+                        {s.layout === 'two-column' ? '2-Col' : s.layout === 'full-image' ? 'Image' : s.layout}
+                      </span>
+                    )}
                   </button>
                 ))}
+              </div>
+            )}
+
+            {/* Fullscreen Floating Presentation HUD */}
+            {isFullscreen && (
+              <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-md text-white border border-slate-700/80 px-4 py-2 rounded-2xl shadow-2xl flex items-center gap-4 text-xs z-50">
+                <button
+                  onClick={() => onSelectSlide(Math.max(0, activeSlideIndex - 1))}
+                  disabled={activeSlideIndex <= 0}
+                  className="p-1 hover:bg-slate-800 rounded-lg disabled:opacity-30 cursor-pointer"
+                  title="Previous Slide (Left Arrow)"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <span className="font-semibold text-slate-200 min-w-[100px] text-center">
+                  Slide {activeSlideIndex + 1} of {totalSlides}
+                </span>
+                <button
+                  onClick={() => onSelectSlide(Math.min(totalSlides - 1, activeSlideIndex + 1))}
+                  disabled={activeSlideIndex >= totalSlides - 1}
+                  className="p-1 hover:bg-slate-800 rounded-lg disabled:opacity-30 cursor-pointer"
+                  title="Next Slide (Right Arrow / Space)"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+                <div className="w-px h-4 bg-slate-700" />
+                <button
+                  onClick={() => setIsFullscreen(false)}
+                  className="text-slate-400 hover:text-white px-2 py-1 rounded-lg text-xs cursor-pointer flex items-center gap-1"
+                  title="Exit Fullscreen (Esc)"
+                >
+                  <Minimize2 className="w-3.5 h-3.5" />
+                  <span>Exit (Esc)</span>
+                </button>
               </div>
             )}
           </div>

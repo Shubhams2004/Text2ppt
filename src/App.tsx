@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { parsePresentation } from './parser/presentationParser';
 import { parseSimpleText } from './parser/simpleTextParser';
 import {
@@ -32,6 +32,31 @@ export default function App() {
   const [exportSuccess, setExportSuccess] = useState<boolean>(false);
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
   const [activeLine, setActiveLine] = useState<number | null>(null);
+
+  // Dark mode state with persistence and system detection
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('code2ppt_theme');
+      if (saved) return saved === 'dark';
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    return false;
+  });
+
+  // Sync dark class to root document element
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('code2ppt_theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('code2ppt_theme', 'light');
+    }
+  }, [isDarkMode]);
+
+  const toggleDarkMode = useCallback(() => {
+    setIsDarkMode((prev) => !prev);
+  }, []);
 
   // Active content based on mode
   const currentContent =
@@ -331,6 +356,26 @@ export default function App() {
     }
   }, [presentation]);
 
+  // Global productivity shortcuts: Ctrl/Cmd+S or Ctrl/Cmd+E to export PPTX, Ctrl/Cmd+/ for help
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+      if (isCmdOrCtrl && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        handleExport('pptx');
+      } else if (isCmdOrCtrl && (e.key === 'e' || e.key === 'E')) {
+        e.preventDefault();
+        handleExport('pptx');
+      } else if (isCmdOrCtrl && e.key === '/') {
+        e.preventDefault();
+        setIsHelpOpen((prev) => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [handleExport]);
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans antialiased">
       {/* Top Header */}
@@ -350,6 +395,8 @@ export default function App() {
         totalBatchCount={batchResult.totalPresentations}
         onExportAllBatch={handleExportAllBatch}
         isExportingAllBatch={isExportingAllBatch}
+        isDarkMode={isDarkMode}
+        onToggleDarkMode={toggleDarkMode}
       />
 
       {/* Main Two-Panel Layout */}

@@ -225,4 +225,51 @@ Regulatory standardization and patient data privacy will dictate enterprise adop
     assert.ok(typeof base64 === 'string');
     assert.ok(base64.length > 10000, 'Output .pptx should have substantial base64 length');
   });
+
+  // 10. Image parsing in Simple Text
+  it('parses images from Image: prefix and markdown image syntax', () => {
+    const text = `Title: Visual Deck
+
+Slide 1: Hero Graphic
+Image: https://example.com/banner.png
+
+Slide 2: Diagram Section
+- Important observation
+![Architecture](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==)`;
+
+    const result = parseSimpleText(text);
+    assert.equal(result.hasErrors, false);
+    assert.equal(result.presentation.slides.length, 2);
+
+    const s1 = result.presentation.slides[0];
+    assert.equal(s1.elements.length, 1);
+    assert.equal(s1.elements[0].type, 'image');
+    assert.equal((s1.elements[0] as any).src, 'https://example.com/banner.png');
+
+    const s2 = result.presentation.slides[1];
+    assert.equal(s2.elements.length, 2);
+    assert.equal(s2.elements[0].type, 'bullet');
+    assert.equal(s2.elements[1].type, 'image');
+    assert.equal((s2.elements[1] as any).alt, 'Architecture');
+  });
+
+  // 11. Layout parsing in Simple Text
+  it('parses Layout: prefix in simple text', () => {
+    const text = `Title: Layout Showcase
+
+Slide 1: Hero Banner
+Layout: full-image
+Image: https://example.com/hero.jpg
+
+Slide 2: Column Comparison
+Layout: two-column
+- Point A
+- Point B`;
+
+    const result = parseSimpleText(text);
+    assert.equal(result.hasErrors, false);
+    assert.equal(result.presentation.slides.length, 2);
+    assert.equal(result.presentation.slides[0].layout, 'full-image');
+    assert.equal(result.presentation.slides[1].layout, 'two-column');
+  });
 });

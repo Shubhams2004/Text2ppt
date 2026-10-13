@@ -5,8 +5,13 @@ import {
   Slide,
   SlideElement,
   SlideLayout,
+  SlideTransition,
   ThemeId,
+  TransitionDirection,
+  TransitionSpeed,
+  TransitionStyle,
   VALID_SLIDE_LAYOUTS,
+  VALID_TRANSITION_STYLES,
   ValidationIssue,
 } from '../models/presentation';
 import { isJavaScriptOrPptxCode } from './jsToDslConverter';
@@ -17,6 +22,9 @@ export interface ExtractedToken {
   keyword: string;
   argument: string;
   layout?: string;
+  dir?: string;
+  speed?: string;
+  duration?: number;
   hasQuotes: boolean;
   unclosedQuote: boolean;
   missingQuotes: boolean;
@@ -134,6 +142,101 @@ export function extractKeywordAndArgument(line: string): ExtractedToken | null {
     };
   }
 
+  // Handle transition command with optional attributes, e.g. transition "push" dir="left" speed="slow"
+  if (keyword === 'transition') {
+    let dirVal: string | undefined;
+    const dirMatch = rest.match(/\b(?:dir|direction)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+    let working = rest;
+    if (dirMatch) {
+      dirVal = dirMatch[1] ?? dirMatch[2] ?? dirMatch[3];
+      working = working.replace(dirMatch[0], '').trim();
+    }
+
+    let speedVal: string | undefined;
+    const speedMatch = working.match(/\b(?:speed|spd)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+    if (speedMatch) {
+      speedVal = speedMatch[1] ?? speedMatch[2] ?? speedMatch[3];
+      working = working.replace(speedMatch[0], '').trim();
+    }
+
+    let durVal: number | undefined;
+    const durMatch = working.match(/\bduration\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+    if (durMatch) {
+      const parsedDur = parseFloat(durMatch[1] ?? durMatch[2] ?? durMatch[3]);
+      if (!isNaN(parsedDur)) durVal = parsedDur;
+      working = working.replace(durMatch[0], '').trim();
+    }
+
+    let styleVal: string | undefined;
+    const styleMatch = working.match(/\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+    if (styleMatch) {
+      styleVal = styleMatch[1] ?? styleMatch[2] ?? styleMatch[3];
+      working = working.replace(styleMatch[0], '').trim();
+    }
+
+    const stylePart = styleVal !== undefined ? styleVal : working;
+    if (!stylePart) {
+      return {
+        rawKeyword,
+        keyword,
+        argument: '',
+        dir: dirVal,
+        speed: speedVal,
+        duration: durVal,
+        hasQuotes: false,
+        unclosedQuote: false,
+        missingQuotes: false,
+        rawLine: line,
+      };
+    }
+
+    const firstChar = stylePart[0];
+    const lastChar = stylePart[stylePart.length - 1];
+
+    if ((firstChar === '"' || firstChar === "'") && stylePart.length >= 2 && lastChar === firstChar) {
+      return {
+        rawKeyword,
+        keyword,
+        argument: stylePart.slice(1, -1),
+        dir: dirVal,
+        speed: speedVal,
+        duration: durVal,
+        hasQuotes: true,
+        unclosedQuote: false,
+        missingQuotes: false,
+        rawLine: line,
+      };
+    }
+
+    if (firstChar === '"' || firstChar === "'") {
+      return {
+        rawKeyword,
+        keyword,
+        argument: stylePart.slice(1),
+        dir: dirVal,
+        speed: speedVal,
+        duration: durVal,
+        hasQuotes: false,
+        unclosedQuote: true,
+        missingQuotes: false,
+        rawLine: line,
+      };
+    }
+
+    return {
+      rawKeyword,
+      keyword,
+      argument: stylePart,
+      dir: dirVal,
+      speed: speedVal,
+      duration: durVal,
+      hasQuotes: false,
+      unclosedQuote: false,
+      missingQuotes: false,
+      rawLine: line,
+    };
+  }
+
   const firstChar = rest[0];
   const lastChar = rest[rest.length - 1];
 
@@ -215,6 +318,7 @@ export function parsePresentation(code: string): ParseResult {
 
   let presentationTitle = 'Untitled Presentation';
   let presentationTheme: ThemeId = 'modern';
+  let presentationTransition: SlideTransition | undefined = undefined;
   let hasPresentationDeclaration = false;
   const slides: Slide[] = [];
   let currentSlide: Slide | null = null;
@@ -290,7 +394,7 @@ export function parsePresentation(code: string): ParseResult {
     }
 
     // Check for missing quotes when an argument is provided
-    if (missingQuotes && argument && keyword !== 'theme') {
+    if (missingQuotes && argument && keyword !== 'theme' && keyword !== 'transition') {
       issues.push({
         line: lineNum,
         code: 'MISSING_QUOTES',
@@ -335,6 +439,85 @@ export function parsePresentation(code: string): ParseResult {
         break;
       }
 
+      case 'transition': {
+        const rawArg = argument.trim().toLowerCase();
+        if (!rawArg) {
+          issues.push({
+            line: lineNum,
+            code: 'MISSING_ARGUMENT',
+            message: `Line ${lineNum}: 'transition' command requires a transition style (e.g., 'fade', 'push').`,
+            severity: 'error',
+            suggestion: `Example: transition "fade" or transition "push" dir="left"`,
+          });
+          break;
+        }
+
+        let baseStyle = rawArg;
+        let derivedDir: TransitionDirection | undefined = token.dir as TransitionDirection | undefined;
+
+        // Compound style check: push-left, push-right, wipe-up, etc.
+        const compoundMatch = baseStyle.match(/^(push|wipe|cover|pull)-([a-z]+)$/i);
+        if (compoundMatch) {
+          baseStyle = compoundMatch[1].toLowerCase();
+          derivedDir = compoundMatch[2].toLowerCase() as TransitionDirection;
+        }
+
+        // Normalize aliases
+        if (baseStyle === 'slide') baseStyle = 'push';
+        else if (baseStyle === 'crossfade' || baseStyle === 'smooth') baseStyle = 'fade';
+        else if (baseStyle === 'checkerboard') baseStyle = 'checker';
+        else if (baseStyle === 'uncover') baseStyle = 'pull';
+        else if (baseStyle === 'off' || baseStyle === 'false') baseStyle = 'none';
+
+        if (!VALID_TRANSITION_STYLES.includes(baseStyle as TransitionStyle)) {
+          issues.push({
+            line: lineNum,
+            code: 'INVALID_TRANSITION',
+            message: `Line ${lineNum}: Unsupported transition style '${argument}'. Supported styles: ${VALID_TRANSITION_STYLES.join(', ')}.`,
+            severity: 'error',
+            suggestion: `Available transitions: fade, push, wipe, split, cut, zoom, dissolve, blinds, checker, circle, diamond, comb, cover, pull, wheel, newsflash, none.`,
+          });
+          break;
+        }
+
+        // Normalize direction
+        let normDir: TransitionDirection | undefined = undefined;
+        if (derivedDir) {
+          const rawDir = String(derivedDir).toLowerCase();
+          if (rawDir === 'left' || rawDir === 'l') normDir = 'left';
+          else if (rawDir === 'right' || rawDir === 'r') normDir = 'right';
+          else if (rawDir === 'up' || rawDir === 'u') normDir = 'up';
+          else if (rawDir === 'down' || rawDir === 'd') normDir = 'down';
+          else if (rawDir === 'horz' || rawDir === 'horizontal') normDir = 'horz';
+          else if (rawDir === 'vert' || rawDir === 'vertical') normDir = 'vert';
+          else if (rawDir === 'in') normDir = 'in';
+          else if (rawDir === 'out') normDir = 'out';
+        }
+
+        // Normalize speed
+        let normSpeed: TransitionSpeed | undefined = undefined;
+        if (token.speed) {
+          const rawSpeed = token.speed.toLowerCase();
+          if (rawSpeed === 'slow') normSpeed = 'slow';
+          else if (rawSpeed === 'fast') normSpeed = 'fast';
+          else if (rawSpeed === 'med' || rawSpeed === 'medium') normSpeed = 'med';
+        }
+
+        const transitionObj: SlideTransition = {
+          style: baseStyle as TransitionStyle,
+          direction: normDir,
+          speed: normSpeed,
+          duration: token.duration,
+        };
+
+        if (currentSlide) {
+          currentSlide.transition = transitionObj;
+        } else {
+          presentationTransition = transitionObj;
+        }
+        break;
+      }
+
       case 'slide': {
         if (!argument) {
           issues.push({
@@ -373,6 +556,51 @@ export function parsePresentation(code: string): ParseResult {
         };
         slides.push(newSlide);
         currentSlide = newSlide;
+        break;
+      }
+
+      case 'layout': {
+        const rawArg = argument ? argument.trim().replace(/^["']|["']$/g, '') : '';
+        const normLayout = rawArg.toLowerCase() as SlideLayout;
+
+        if (!rawArg) {
+          issues.push({
+            line: lineNum,
+            code: 'MISSING_ARGUMENT',
+            message: `Line ${lineNum}: 'layout' command requires a layout type.`,
+            severity: 'warning',
+            suggestion: `Example: layout "two-column" or layout "full-image". Supported layouts: ${VALID_SLIDE_LAYOUTS.join(', ')}.`,
+          });
+          break;
+        }
+
+        if (!VALID_SLIDE_LAYOUTS.includes(normLayout)) {
+          issues.push({
+            line: lineNum,
+            code: 'INVALID_LAYOUT',
+            message: `Line ${lineNum}: Unsupported layout '${rawArg}'. Supported layouts: ${VALID_SLIDE_LAYOUTS.join(', ')}.`,
+            severity: 'error',
+            suggestion: `Supported layouts: ${VALID_SLIDE_LAYOUTS.join(', ')}.`,
+          });
+          break;
+        }
+
+        if (!currentSlide) {
+          // If layout appears before any slide, create the initial slide with this layout
+          const slideIndex = slides.length;
+          const newSlide: Slide = {
+            id: `slide-${slideIndex + 1}`,
+            index: slideIndex,
+            title: presentationTitle ? `${presentationTitle}` : `Slide ${slideIndex + 1}`,
+            line: lineNum,
+            layout: normLayout,
+            elements: [],
+          };
+          slides.push(newSlide);
+          currentSlide = newSlide;
+        } else {
+          currentSlide.layout = normLayout;
+        }
         break;
       }
 
@@ -595,7 +823,7 @@ export function parsePresentation(code: string): ParseResult {
           code: 'INVALID_COMMAND',
           message: `Line ${lineNum}: Command '${keyword}' is reserved for future extensions.`,
           severity: 'error',
-          suggestion: `Supported commands: presentation, slide, text, bullet, subtitle, quote, image, theme.`,
+          suggestion: `Supported commands: presentation, slide, text, bullet, subtitle, quote, image, layout, theme, transition.`,
         });
         break;
       }
@@ -611,9 +839,18 @@ export function parsePresentation(code: string): ParseResult {
           severity: 'error',
           suggestion: isJs
             ? `Use presentation, slide, bullet, or text commands instead.`
-            : `Supported commands: presentation, slide, text, bullet, subtitle, quote, theme.`,
+            : `Supported commands: presentation, slide, text, bullet, subtitle, quote, image, layout, theme, transition.`,
         });
         break;
+      }
+    }
+  }
+
+  // Apply presentation-level transition to slides that did not specify their own transition
+  if (presentationTransition) {
+    for (const slide of slides) {
+      if (!slide.transition) {
+        slide.transition = { ...presentationTransition };
       }
     }
   }
@@ -659,6 +896,7 @@ export function parsePresentation(code: string): ParseResult {
     presentation: {
       title: presentationTitle,
       theme: presentationTheme,
+      transition: presentationTransition,
       slides,
     },
     issues,

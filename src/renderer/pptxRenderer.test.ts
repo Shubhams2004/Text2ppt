@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { Presentation, Slide } from '../models/presentation';
-import { buildPptxPresentation, exportToPptxFile } from './pptxRenderer';
+import JSZip from 'jszip';
+import { Presentation, Slide, SlideTransition } from '../models/presentation';
+import {
+  buildPptxPresentation,
+  exportToPptxFile,
+  buildTransitionXml,
+  injectTransitionIntoSlideXml,
+} from './pptxRenderer';
 import {
   autoPaginateSlide,
   autoPaginatePresentation,
@@ -789,5 +795,103 @@ describe('Code2PPT Layout Engine & PPTX Renderer Tests', () => {
     const exportResult = await exportToPptxFile(presentation, { fileName: 'Action_Items' });
     assert.equal(exportResult.success, true);
     assert.equal(exportResult.fileName, 'Action_Items.pptx');
+  });
+
+  // 25. buildTransitionXml maps transition styles to valid PresentationML OpenXML
+  it('buildTransitionXml correctly maps transition styles to PresentationML OpenXML elements', () => {
+    // Fade
+    const fadeXml = buildTransitionXml({ style: 'fade' });
+    assert.ok(fadeXml.includes('<p:transition'), 'Must wrap in p:transition');
+    assert.ok(fadeXml.includes('<p:fade/>'), 'Must contain p:fade');
+
+    // Push with direction and speed
+    const pushXml = buildTransitionXml({ style: 'push', direction: 'left', speed: 'slow' });
+    assert.ok(pushXml.includes('spd="slow"'), 'Must include speed attribute');
+    assert.ok(pushXml.includes('<p:push dir="l"/>'), 'Must map left direction to l');
+
+    // Push right
+    const pushRightXml = buildTransitionXml({ style: 'push', direction: 'right' });
+    assert.ok(pushRightXml.includes('<p:push dir="r"/>'), 'Must map right direction to r');
+
+    // Wipe
+    const wipeXml = buildTransitionXml({ style: 'wipe', direction: 'left' });
+    assert.ok(wipeXml.includes('<p:wipe dir="l"/>'), 'Must map wipe left to l');
+
+    // Split
+    const splitXml = buildTransitionXml({ style: 'split', direction: 'vert' });
+    assert.ok(splitXml.includes('<p:split orient="vert" dir="out"/>'));
+
+    // Zoom
+    const zoomXml = buildTransitionXml({ style: 'zoom', direction: 'out' });
+    assert.ok(zoomXml.includes('<p:zoom dir="out"/>'));
+
+    // None
+    const noneXml = buildTransitionXml({ style: 'none' });
+    assert.equal(noneXml, '', 'None transition must produce empty string');
+  });
+
+  // 26. injectTransitionIntoSlideXml preserves OpenXML schema sequence
+  it('injectTransitionIntoSlideXml inserts transition before closing p:sld or timing', () => {
+    const slideXml1 = '<p:sld><p:cSld/><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>';
+    const transXml = '<p:transition><p:fade/></p:transition>';
+    const out1 = injectTransitionIntoSlideXml(slideXml1, transXml);
+    assert.ok(out1.endsWith('<p:transition><p:fade/></p:transition></p:sld>'));
+
+    const slideXml2 = '<p:sld><p:cSld/><p:clrMapOvr/><p:timing><p:tnLst/></p:timing></p:sld>';
+    const out2 = injectTransitionIntoSlideXml(slideXml2, transXml);
+    assert.ok(out2.includes('<p:transition><p:fade/></p:transition><p:timing>'));
+  });
+
+  // 27. Generates valid PPTX archive with embedded slide transitions
+  it('generates a valid PPTX with embedded slide transitions in slide XML files', async () => {
+    const presentation: Presentation = {
+      title: 'Deck With Transitions',
+      theme: 'sunset',
+      transition: { style: 'fade' },
+      slides: [
+        {
+          id: 's-1',
+          index: 0,
+          title: 'Slide 1 - Fade Inherited',
+          line: 1,
+          elements: [{ id: 'el-1', type: 'text', content: 'Inherited fade', line: 2 }],
+        },
+        {
+          id: 's-2',
+          index: 1,
+          title: 'Slide 2 - Push Left Override',
+          line: 3,
+          transition: { style: 'push', direction: 'left', speed: 'fast' },
+          elements: [{ id: 'el-2', type: 'bullet', content: 'Push left transition', line: 4 }],
+        },
+        {
+          id: 's-3',
+          index: 2,
+          title: 'Slide 3 - None Override',
+          line: 5,
+          transition: { style: 'none' },
+          elements: [{ id: 'el-3', type: 'bullet', content: 'No transition', line: 6 }],
+        },
+      ],
+    };
+
+    const pres = buildPptxPresentation(presentation);
+    const b64 = (await pres.write({ outputType: 'base64' })) as string;
+    assert.ok(b64.length > 5000);
+
+    // Inspect PPTX zip archive contents
+    const zip = await JSZip.loadAsync(Buffer.from(b64, 'base64'));
+
+    const slide1Xml = await zip.file('ppt/slides/slide1.xml')!.async('string');
+    assert.ok(slide1Xml.includes('<p:transition'), 'Slide 1 must have transition');
+    assert.ok(slide1Xml.includes('<p:fade/>'), 'Slide 1 must have fade');
+
+    const slide2Xml = await zip.file('ppt/slides/slide2.xml')!.async('string');
+    assert.ok(slide2Xml.includes('<p:transition'), 'Slide 2 must have transition');
+    assert.ok(slide2Xml.includes('<p:push dir="l"/>'), 'Slide 2 must have push dir="l"');
+    assert.ok(slide2Xml.includes('spd="fast"'), 'Slide 2 must have speed="fast"');
+
+    const slide3Xml = await zip.file('ppt/slides/slide3.xml')!.async('string');
+    assert.ok(!slide3Xml.includes('<p:transition'), 'Slide 3 should not have transition');
   });
 });

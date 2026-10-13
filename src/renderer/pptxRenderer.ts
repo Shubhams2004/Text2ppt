@@ -1,5 +1,6 @@
 import pptxgen from 'pptxgenjs';
-import { Presentation, Slide } from '../models/presentation';
+import JSZip from 'jszip';
+import { Presentation, Slide, SlideTransition } from '../models/presentation';
 import { getTheme, THEMES } from '../themes/presentationThemes';
 import {
   autoPaginatePresentation,
@@ -20,6 +21,180 @@ export interface ExportOptions {
 export function sanitizeFileName(name: string): string {
   const sanitized = name.trim().replace(/[/\\?%*:|"<>]/g, '_');
   return sanitized.length > 0 ? sanitized : 'presentation';
+}
+
+/**
+ * Generates OpenXML transition element for PowerPoint PPTX based on transition settings
+ */
+export function buildTransitionXml(transition?: SlideTransition): string {
+  if (!transition || transition.style === 'none') {
+    return '';
+  }
+
+  const speedAttr = transition.speed ? ` spd="${transition.speed}"` : '';
+  const dir = transition.direction;
+
+  let effectXml = '';
+  switch (transition.style) {
+    case 'fade':
+      effectXml = '<p:fade/>';
+      break;
+
+    case 'push': {
+      const pDir =
+        dir === 'right' || dir === 'r'
+          ? 'r'
+          : dir === 'up' || dir === 'u'
+          ? 'u'
+          : dir === 'down' || dir === 'd'
+          ? 'd'
+          : 'l';
+      effectXml = `<p:push dir="${pDir}"/>`;
+      break;
+    }
+
+    case 'wipe': {
+      const pDir =
+        dir === 'left' || dir === 'l'
+          ? 'l'
+          : dir === 'up' || dir === 'u'
+          ? 'u'
+          : dir === 'down' || dir === 'd'
+          ? 'd'
+          : 'r';
+      effectXml = `<p:wipe dir="${pDir}"/>`;
+      break;
+    }
+
+    case 'split': {
+      const orient = dir === 'vert' || dir === 'vertical' ? 'vert' : 'horz';
+      const splitDir = dir === 'in' ? 'in' : 'out';
+      effectXml = `<p:split orient="${orient}" dir="${splitDir}"/>`;
+      break;
+    }
+
+    case 'cut':
+      effectXml = '<p:cut/>';
+      break;
+
+    case 'zoom': {
+      const zDir = dir === 'out' ? 'out' : 'in';
+      effectXml = `<p:zoom dir="${zDir}"/>`;
+      break;
+    }
+
+    case 'dissolve':
+      effectXml = '<p:dissolve/>';
+      break;
+
+    case 'blinds': {
+      const orient = dir === 'vert' || dir === 'vertical' ? 'vert' : 'horz';
+      effectXml = `<p:blinds orient="${orient}"/>`;
+      break;
+    }
+
+    case 'checker': {
+      const cDir = dir === 'vert' || dir === 'vertical' ? 'vert' : 'horz';
+      effectXml = `<p:checker dir="${cDir}"/>`;
+      break;
+    }
+
+    case 'circle':
+      effectXml = '<p:circle/>';
+      break;
+
+    case 'diamond':
+      effectXml = '<p:diamond/>';
+      break;
+
+    case 'comb': {
+      const orient = dir === 'vert' || dir === 'vertical' ? 'vert' : 'horz';
+      effectXml = `<p:comb orient="${orient}"/>`;
+      break;
+    }
+
+    case 'cover': {
+      const pDir =
+        dir === 'right' || dir === 'r'
+          ? 'r'
+          : dir === 'up' || dir === 'u'
+          ? 'u'
+          : dir === 'down' || dir === 'd'
+          ? 'd'
+          : 'l';
+      effectXml = `<p:cover dir="${pDir}"/>`;
+      break;
+    }
+
+    case 'pull': {
+      const pDir =
+        dir === 'right' || dir === 'r'
+          ? 'r'
+          : dir === 'up' || dir === 'u'
+          ? 'u'
+          : dir === 'down' || dir === 'd'
+          ? 'd'
+          : 'l';
+      effectXml = `<p:pull dir="${pDir}"/>`;
+      break;
+    }
+
+    case 'wheel':
+      effectXml = '<p:wheel spokes="4"/>';
+      break;
+
+    case 'newsflash':
+      effectXml = '<p:newsflash/>';
+      break;
+
+    default:
+      effectXml = '<p:fade/>';
+      break;
+  }
+
+  return `<p:transition${speedAttr} advClick="1">${effectXml}</p:transition>`;
+}
+
+/**
+ * Injects OpenXML transition XML into slide XML adhering to OpenXML schema order
+ */
+export function injectTransitionIntoSlideXml(
+  slideXml: string,
+  transitionXml: string
+): string {
+  if (!transitionXml) return slideXml;
+  if (slideXml.includes('<p:transition')) {
+    return slideXml.replace(/<p:transition[\s\S]*?<\/p:transition>/, transitionXml);
+  }
+  if (slideXml.includes('<p:timing>')) {
+    return slideXml.replace('<p:timing>', `${transitionXml}<p:timing>`);
+  }
+  return slideXml.replace('</p:sld>', `${transitionXml}</p:sld>`);
+}
+
+/**
+ * Applies slide transitions to all slides within the PPTX JSZip bundle
+ */
+export async function applyTransitionsToPptxZip(
+  zip: JSZip,
+  presentation: Presentation
+): Promise<JSZip> {
+  const slides = presentation.slides;
+  for (let i = 0; i < slides.length; i++) {
+    const slide = slides[i];
+    const transition = slide.transition || presentation.transition;
+    if (transition && transition.style !== 'none') {
+      const slidePath = `ppt/slides/slide${i + 1}.xml`;
+      const file = zip.file(slidePath);
+      if (file) {
+        const xml = await file.async('string');
+        const transitionXml = buildTransitionXml(transition);
+        const updatedXml = injectTransitionIntoSlideXml(xml, transitionXml);
+        zip.file(slidePath, updatedXml);
+      }
+    }
+  }
+  return zip;
 }
 
 /**
@@ -72,6 +247,49 @@ export function buildPptxPresentation(
       renderFooter(slide, paginated.title, index + 1, totalSlides, layout);
     }
   });
+
+  // Augment pres.exportPresentation to seamlessly inject transitions into PPTX OpenXML slides
+  const origExport = (pres as any).exportPresentation?.bind(pres);
+  if (origExport) {
+    (pres as any).exportPresentation = async function (props: any) {
+      const isNode =
+        typeof process !== 'undefined' &&
+        !!process.versions?.node &&
+        process.release?.name === 'node';
+      const reqOutputType = props?.outputType;
+      const intermediateType = isNode ? 'nodebuffer' : 'arraybuffer';
+
+      const rawData = await origExport({
+        ...props,
+        outputType: intermediateType,
+      });
+
+      const hasAnyTransition =
+        (paginated.transition && paginated.transition.style !== 'none') ||
+        paginated.slides.some(
+          (s) => s.transition && s.transition.style !== 'none'
+        );
+
+      if (!hasAnyTransition) {
+        if (reqOutputType === intermediateType) {
+          return rawData;
+        }
+        const zip = await JSZip.loadAsync(rawData);
+        return await zip.generateAsync({
+          type: reqOutputType || (isNode ? 'nodebuffer' : 'blob'),
+          compression: props?.compression ? 'DEFLATE' : 'STORE',
+        });
+      }
+
+      const zip = await JSZip.loadAsync(rawData);
+      await applyTransitionsToPptxZip(zip, paginated);
+
+      return await zip.generateAsync({
+        type: reqOutputType || (isNode ? 'nodebuffer' : 'blob'),
+        compression: props?.compression ? 'DEFLATE' : 'STORE',
+      });
+    };
+  }
 
   return pres;
 }
