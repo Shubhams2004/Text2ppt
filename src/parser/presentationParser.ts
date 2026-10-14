@@ -1,11 +1,16 @@
 import {
+  ChartElement,
+  ChartType,
   ImageElement,
   ParseResult,
   Presentation,
+  ShapeElement,
+  ShapeType,
   Slide,
   SlideElement,
   SlideLayout,
   SlideTransition,
+  TableElement,
   ThemeId,
   TransitionDirection,
   TransitionSpeed,
@@ -16,6 +21,7 @@ import {
 } from '../models/presentation';
 import { isJavaScriptOrPptxCode } from './jsToDslConverter';
 import { countPresentationDeclarations, parseBatchPresentations } from './batchParser';
+import { isQualityCleanRequested, cleanPresentationModel } from '../utils/contentQuality';
 
 export interface ExtractedToken {
   rawKeyword: string;
@@ -25,6 +31,12 @@ export interface ExtractedToken {
   dir?: string;
   speed?: string;
   duration?: number;
+  link?: string;
+  fill?: string;
+  stroke?: string;
+  data?: string;
+  headers?: string;
+  rows?: string;
   hasQuotes: boolean;
   unclosedQuote: boolean;
   missingQuotes: boolean;
@@ -237,15 +249,65 @@ export function extractKeywordAndArgument(line: string): ExtractedToken | null {
     };
   }
 
-  const firstChar = rest[0];
-  const lastChar = rest[rest.length - 1];
+  let working = rest;
+
+  let linkVal: string | undefined;
+  const linkMatch = working.match(/\b(?:link|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (linkMatch) {
+    linkVal = linkMatch[1] ?? linkMatch[2] ?? linkMatch[3];
+    working = working.replace(linkMatch[0], '').trim();
+  }
+
+  let fillVal: string | undefined;
+  const fillMatch = working.match(/\b(?:fill|fillcolor|bg)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (fillMatch) {
+    fillVal = fillMatch[1] ?? fillMatch[2] ?? fillMatch[3];
+    working = working.replace(fillMatch[0], '').trim();
+  }
+
+  let strokeVal: string | undefined;
+  const strokeMatch = working.match(/\b(?:stroke|strokecolor|border)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (strokeMatch) {
+    strokeVal = strokeMatch[1] ?? strokeMatch[2] ?? strokeMatch[3];
+    working = working.replace(strokeMatch[0], '').trim();
+  }
+
+  let dataVal: string | undefined;
+  const dataMatch = working.match(/\bdata\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (dataMatch) {
+    dataVal = dataMatch[1] ?? dataMatch[2] ?? dataMatch[3];
+    working = working.replace(dataMatch[0], '').trim();
+  }
+
+  let headersVal: string | undefined;
+  const headersMatch = working.match(/\bheaders\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (headersMatch) {
+    headersVal = headersMatch[1] ?? headersMatch[2] ?? headersMatch[3];
+    working = working.replace(headersMatch[0], '').trim();
+  }
+
+  let rowsVal: string | undefined;
+  const rowsMatch = working.match(/\brows\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (rowsMatch) {
+    rowsVal = rowsMatch[1] ?? rowsMatch[2] ?? rowsMatch[3];
+    working = working.replace(rowsMatch[0], '').trim();
+  }
+
+  const firstChar = working[0];
+  const lastChar = working[working.length - 1];
 
   // Properly quoted string (supports double or single quotes)
-  if ((firstChar === '"' || firstChar === "'") && rest.length >= 2 && lastChar === firstChar) {
+  if ((firstChar === '"' || firstChar === "'") && working.length >= 2 && lastChar === firstChar) {
     return {
       rawKeyword,
       keyword,
-      argument: rest.slice(1, -1),
+      argument: working.slice(1, -1),
+      link: linkVal,
+      fill: fillVal,
+      stroke: strokeVal,
+      data: dataVal,
+      headers: headersVal,
+      rows: rowsVal,
       hasQuotes: true,
       unclosedQuote: false,
       missingQuotes: false,
@@ -258,7 +320,13 @@ export function extractKeywordAndArgument(line: string): ExtractedToken | null {
     return {
       rawKeyword,
       keyword,
-      argument: rest.slice(1),
+      argument: working.slice(1),
+      link: linkVal,
+      fill: fillVal,
+      stroke: strokeVal,
+      data: dataVal,
+      headers: headersVal,
+      rows: rowsVal,
       hasQuotes: false,
       unclosedQuote: true,
       missingQuotes: false,
@@ -270,7 +338,13 @@ export function extractKeywordAndArgument(line: string): ExtractedToken | null {
   return {
     rawKeyword,
     keyword,
-    argument: rest,
+    argument: working,
+    link: linkVal,
+    fill: fillVal,
+    stroke: strokeVal,
+    data: dataVal,
+    headers: headersVal,
+    rows: rowsVal,
     hasQuotes: false,
     unclosedQuote: false,
     missingQuotes: true,
@@ -814,16 +888,232 @@ export function parsePresentation(code: string): ParseResult {
         break;
       }
 
-      // Extensible cases for future commands
-      case 'table':
-      case 'chart':
       case 'shape': {
-        issues.push({
+        if (!currentSlide) {
+          issues.push({
+            line: lineNum,
+            code: 'CONTENT_BEFORE_SLIDE',
+            message: `Line ${lineNum}: Content 'shape' found before any 'slide'. You must define a slide first.`,
+            severity: 'error',
+            suggestion: `Add a 'slide "Title"' command before line ${lineNum}.`,
+          });
+          currentSlide = {
+            id: `slide-${slides.length + 1}`,
+            index: slides.length,
+            title: presentationTitle || 'Slide',
+            line: lineNum,
+            elements: [],
+          };
+          slides.push(currentSlide);
+        }
+
+        const rawShapeType = (argument || 'rect').toLowerCase().trim();
+        let shapeType: ShapeType = 'rect';
+        if (rawShapeType.includes('round') || rawShapeType === 'rounded-rect' || rawShapeType === 'round-rect') {
+          shapeType = 'round-rect';
+        } else if (rawShapeType.includes('circle')) {
+          shapeType = 'circle';
+        } else if (rawShapeType.includes('ellipse')) {
+          shapeType = 'ellipse';
+        } else if (rawShapeType.includes('arrow')) {
+          shapeType = 'arrow';
+        } else if (rawShapeType.includes('line')) {
+          shapeType = 'line';
+        } else if (rawShapeType.includes('triangle')) {
+          shapeType = 'triangle';
+        } else if (rawShapeType.includes('star')) {
+          shapeType = 'star';
+        }
+
+        elementCounter++;
+        const shapeEl: ShapeElement = {
+          id: `el-${elementCounter}`,
+          type: 'shape',
+          content: shapeType,
+          shapeType,
+          fillColor: token.fill,
+          fillHex: token.fill ? token.fill.replace('#', '') : undefined,
+          strokeColor: token.stroke,
+          strokeHex: token.stroke ? token.stroke.replace('#', '') : undefined,
+          link: token.link,
           line: lineNum,
-          code: 'INVALID_COMMAND',
-          message: `Line ${lineNum}: Command '${keyword}' is reserved for future extensions.`,
-          severity: 'error',
-          suggestion: `Supported commands: presentation, slide, text, bullet, subtitle, quote, image, layout, theme, transition.`,
+        };
+        currentSlide.elements.push(shapeEl);
+        break;
+      }
+
+      case 'table': {
+        if (!currentSlide) {
+          issues.push({
+            line: lineNum,
+            code: 'CONTENT_BEFORE_SLIDE',
+            message: `Line ${lineNum}: Content 'table' found before any 'slide'. You must define a slide first.`,
+            severity: 'error',
+            suggestion: `Add a 'slide "Title"' command before line ${lineNum}.`,
+          });
+          currentSlide = {
+            id: `slide-${slides.length + 1}`,
+            index: slides.length,
+            title: presentationTitle || 'Slide',
+            line: lineNum,
+            elements: [],
+          };
+          slides.push(currentSlide);
+        }
+
+        let headers: string[] = [];
+        let rows: string[][] = [];
+
+        if (token.headers || token.rows) {
+          if (token.headers) {
+            headers = token.headers.split(',').map((h) => h.trim());
+          }
+          if (token.rows) {
+            rows = token.rows
+              .split(';')
+              .map((r) => r.split(',').map((cell) => cell.trim()))
+              .filter((r) => r.length > 0 && r.some((c) => c.length > 0));
+          }
+        } else if (argument) {
+          const parsedRows = argument
+            .split(';')
+            .map((r) => r.split(',').map((cell) => cell.trim()))
+            .filter((r) => r.length > 0 && r.some((c) => c.length > 0));
+
+          if (parsedRows.length > 1) {
+            headers = parsedRows[0];
+            rows = parsedRows.slice(1);
+          } else if (parsedRows.length === 1) {
+            headers = parsedRows[0];
+            rows = [];
+          }
+        }
+
+        if (headers.length === 0) {
+          headers = ['Column 1', 'Column 2'];
+          rows = [['Item 1', 'Item 2']];
+        }
+
+        elementCounter++;
+        const tableEl: TableElement = {
+          id: `el-${elementCounter}`,
+          type: 'table',
+          content: 'Table',
+          headers,
+          rows,
+          line: lineNum,
+        };
+        currentSlide.elements.push(tableEl);
+        break;
+      }
+
+      case 'chart': {
+        if (!currentSlide) {
+          issues.push({
+            line: lineNum,
+            code: 'CONTENT_BEFORE_SLIDE',
+            message: `Line ${lineNum}: Content 'chart' found before any 'slide'. You must define a slide first.`,
+            severity: 'error',
+            suggestion: `Add a 'slide "Title"' command before line ${lineNum}.`,
+          });
+          currentSlide = {
+            id: `slide-${slides.length + 1}`,
+            index: slides.length,
+            title: presentationTitle || 'Slide',
+            line: lineNum,
+            elements: [],
+          };
+          slides.push(currentSlide);
+        }
+
+        const rawType = (argument || 'bar').toLowerCase().trim();
+        let chartType: ChartType = 'bar';
+        if (rawType.includes('pie')) chartType = 'pie';
+        else if (rawType.includes('doughnut') || rawType.includes('donut')) chartType = 'doughnut';
+        else if (rawType.includes('line')) chartType = 'line';
+        else if (rawType.includes('area')) chartType = 'area';
+        else if (rawType.includes('col') || rawType.includes('column')) chartType = 'column';
+
+        const dataItems: Array<{ label: string; value: number }> = [];
+        const dataStr = token.data || (argument.includes(':') ? argument : '');
+
+        if (dataStr) {
+          const entries = dataStr.split(/[,;]/);
+          for (const entry of entries) {
+            const [k, v] = entry.split(/[:=]/);
+            if (k && v) {
+              const valNum = parseFloat(v.trim());
+              if (!isNaN(valNum)) {
+                dataItems.push({ label: k.trim(), value: valNum });
+              }
+            }
+          }
+        }
+
+        if (dataItems.length === 0) {
+          dataItems.push(
+            { label: 'Category A', value: 30 },
+            { label: 'Category B', value: 50 },
+            { label: 'Category C', value: 20 }
+          );
+        }
+
+        elementCounter++;
+        const chartEl: ChartElement = {
+          id: `el-${elementCounter}`,
+          type: 'chart',
+          content: `${chartType} chart`,
+          chartType,
+          data: dataItems,
+          title: token.data ? argument : undefined,
+          line: lineNum,
+        };
+        currentSlide.elements.push(chartEl);
+        break;
+      }
+
+      case 'notes':
+      case 'note': {
+        if (!currentSlide) {
+          issues.push({
+            line: lineNum,
+            code: 'CONTENT_BEFORE_SLIDE',
+            message: `Line ${lineNum}: 'notes' found before any 'slide'. You must define a slide first.`,
+            severity: 'warning',
+            suggestion: `Add a 'slide "Title"' command before line ${lineNum}.`,
+          });
+        } else {
+          currentSlide.notes = argument;
+        }
+        break;
+      }
+
+      case 'background':
+      case 'bg': {
+        if (currentSlide) {
+          currentSlide.background = argument;
+        }
+        break;
+      }
+
+      case 'link': {
+        if (!currentSlide) {
+          currentSlide = {
+            id: `slide-${slides.length + 1}`,
+            index: slides.length,
+            title: presentationTitle || 'Slide',
+            line: lineNum,
+            elements: [],
+          };
+          slides.push(currentSlide);
+        }
+        elementCounter++;
+        currentSlide.elements.push({
+          id: `el-${elementCounter}`,
+          type: 'text',
+          content: argument,
+          link: argument,
+          line: lineNum,
         });
         break;
       }
@@ -839,7 +1129,7 @@ export function parsePresentation(code: string): ParseResult {
           severity: 'error',
           suggestion: isJs
             ? `Use presentation, slide, bullet, or text commands instead.`
-            : `Supported commands: presentation, slide, text, bullet, subtitle, quote, image, layout, theme, transition.`,
+            : `Supported commands: presentation, slide, text, bullet, subtitle, quote, image, layout, theme, transition, shape, table, chart, notes, background.`,
         });
         break;
       }
@@ -892,13 +1182,20 @@ export function parsePresentation(code: string): ParseResult {
 
   const hasErrors = issues.some((i) => i.severity === 'error');
 
+  let presentation: Presentation = {
+    title: presentationTitle,
+    theme: presentationTheme,
+    transition: presentationTransition,
+    slides,
+  };
+
+  if (isQualityCleanRequested(code)) {
+    const cleaned = cleanPresentationModel(presentation);
+    presentation = cleaned.presentation;
+  }
+
   return {
-    presentation: {
-      title: presentationTitle,
-      theme: presentationTheme,
-      transition: presentationTransition,
-      slides,
-    },
+    presentation,
     issues,
     hasErrors,
   };

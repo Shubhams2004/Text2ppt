@@ -1,6 +1,13 @@
 import pptxgen from 'pptxgenjs';
 import JSZip from 'jszip';
-import { Presentation, Slide, SlideTransition } from '../models/presentation';
+import {
+  ChartElement,
+  Presentation,
+  ShapeElement,
+  Slide,
+  SlideTransition,
+  TableElement,
+} from '../models/presentation';
 import { getTheme, THEMES } from '../themes/presentationThemes';
 import {
   autoPaginatePresentation,
@@ -15,12 +22,29 @@ export interface ExportOptions {
   includeSlideNumbers?: boolean;
 }
 
+export const PPTX_MIME_TYPE =
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+
 /**
  * Sanitizes file names for cross-platform file systems
  */
 export function sanitizeFileName(name: string): string {
   const sanitized = name.trim().replace(/[/\\?%*:|"<>]/g, '_');
   return sanitized.length > 0 ? sanitized : 'presentation';
+}
+
+/**
+ * Normalizes a presentation file name to always end in a single .pptx extension,
+ * stripping any unintended .zip, .pptx.zip, or repeated extensions.
+ */
+export function formatPptxFileName(name: string): string {
+  let clean = sanitizeFileName(name);
+  clean = clean.replace(/\.pptx\.zip$/i, '');
+  clean = clean.replace(/\.zip$/i, '');
+  clean = clean.replace(/(\.pptx)+$/i, '');
+  clean = clean.trim();
+  if (!clean) clean = 'presentation';
+  return `${clean}.pptx`;
 }
 
 /**
@@ -271,12 +295,16 @@ export function buildPptxPresentation(
         );
 
       if (!hasAnyTransition) {
-        if (reqOutputType === intermediateType) {
+        if (!reqOutputType || reqOutputType === intermediateType) {
           return rawData;
+        }
+        if (reqOutputType === 'blob') {
+          return new Blob([rawData], { type: PPTX_MIME_TYPE });
         }
         const zip = await JSZip.loadAsync(rawData);
         return await zip.generateAsync({
-          type: reqOutputType || (isNode ? 'nodebuffer' : 'blob'),
+          type: reqOutputType,
+          mimeType: PPTX_MIME_TYPE,
           compression: props?.compression ? 'DEFLATE' : 'STORE',
         });
       }
@@ -284,8 +312,17 @@ export function buildPptxPresentation(
       const zip = await JSZip.loadAsync(rawData);
       await applyTransitionsToPptxZip(zip, paginated);
 
+      if (reqOutputType === 'blob') {
+        const buf = await zip.generateAsync({
+          type: 'arraybuffer',
+          compression: props?.compression ? 'DEFLATE' : 'STORE',
+        });
+        return new Blob([buf], { type: PPTX_MIME_TYPE });
+      }
+
       return await zip.generateAsync({
         type: reqOutputType || (isNode ? 'nodebuffer' : 'blob'),
+        mimeType: PPTX_MIME_TYPE,
         compression: props?.compression ? 'DEFLATE' : 'STORE',
       });
     };
@@ -409,6 +446,20 @@ function renderSlideWithLayout(
     renderImageRegion(pres, slide, layout.imageRegion, theme);
   }
 
+  // Speaker notes
+  if (slideData.notes) {
+    slide.addNotes(slideData.notes);
+  }
+
+  // Custom slide background
+  if (slideData.background) {
+    if (slideData.background.startsWith('#')) {
+      slide.background = { fill: slideData.background.replace('#', '') };
+    } else if (slideData.background.startsWith('http') || slideData.background.startsWith('data:image/')) {
+      slide.background = { path: slideData.background };
+    }
+  }
+
   // 3. Render Two-Column content if two-column layout
   if (layout.layoutType === 'two-column' && layout.twoColumn) {
     const { column1, column2 } = layout.twoColumn;
@@ -449,16 +500,18 @@ function renderSlideWithLayout(
     return;
   }
 
-  // 4. Default / Standard body content (filter out image elements from text flow)
-  const nonImageElements = slideData.elements.filter((el) => el.type !== 'image');
-  if (!layout.body.isEmpty && nonImageElements.length > 0) {
+  // 4. Default / Standard body text content
+  const textElements = slideData.elements.filter(
+    (el) => el.type !== 'image' && el.type !== 'shape' && el.type !== 'table' && el.type !== 'chart'
+  );
+  if (!layout.body.isEmpty && textElements.length > 0) {
     const context = {
       typography: layout.body.typography,
       theme,
       contentBox: layout.body.bounds,
     };
 
-    const textPropsArray: pptxgen.TextProps[] = nonImageElements.map((element) =>
+    const textPropsArray: pptxgen.TextProps[] = textElements.map((element) =>
       renderSlideElement(element, context)
     );
 
@@ -470,6 +523,205 @@ function renderSlideWithLayout(
       valign: 'top',
     });
   }
+
+  // 5. Render Native PowerPoint Shapes
+  const shapeElements = slideData.elements.filter((el): el is ShapeElement => el.type === 'shape');
+  shapeElements.forEach((shapeEl, idx) => {
+    const defaultBounds = {
+      x: layout.body.bounds.x + idx * 1.5,
+      y: layout.body.bounds.y + (textElements.length > 0 ? 2.0 : 0.2),
+      w: 2.2,
+      h: 1.4,
+    };
+    renderShapeElement(pres, slide, shapeEl, theme, defaultBounds);
+  });
+
+  // 6. Render Native PowerPoint Tables
+  const tableElements = slideData.elements.filter((el): el is TableElement => el.type === 'table');
+  tableElements.forEach((tableEl) => {
+    const defaultBounds = {
+      x: layout.body.bounds.x,
+      y: layout.body.bounds.y + (textElements.length > 0 ? 1.6 : 0.1),
+      w: layout.body.bounds.w,
+      h: Math.min(3.6, layout.body.bounds.h),
+    };
+    renderTableElement(pres, slide, tableEl, theme, defaultBounds);
+  });
+
+  // 7. Render Native PowerPoint Charts
+  const chartElements = slideData.elements.filter((el): el is ChartElement => el.type === 'chart');
+  chartElements.forEach((chartEl) => {
+    const defaultBounds = {
+      x: layout.body.bounds.x,
+      y: layout.body.bounds.y + (textElements.length > 0 ? 1.6 : 0.1),
+      w: Math.min(6.5, layout.body.bounds.w),
+      h: Math.min(3.4, layout.body.bounds.h),
+    };
+    renderChartElement(pres, slide, chartEl, theme, defaultBounds);
+  });
+}
+
+function renderShapeElement(
+  pres: pptxgen,
+  slide: pptxgen.Slide,
+  element: ShapeElement,
+  theme: ReturnType<typeof getTheme>,
+  fallbackBounds: { x: number; y: number; w: number; h: number }
+) {
+  const x = element.x ?? fallbackBounds.x;
+  const y = element.y ?? fallbackBounds.y;
+  const w = element.w ?? fallbackBounds.w;
+  const h = element.h ?? fallbackBounds.h;
+
+  let shapeType = pres.ShapeType.rect;
+  switch (element.shapeType) {
+    case 'round-rect':
+      shapeType = pres.ShapeType.roundRect;
+      break;
+    case 'circle':
+    case 'ellipse':
+      shapeType = pres.ShapeType.ellipse;
+      break;
+    case 'line':
+      shapeType = pres.ShapeType.line;
+      break;
+    case 'arrow':
+      shapeType = pres.ShapeType.rightArrow;
+      break;
+    case 'triangle':
+      shapeType = pres.ShapeType.triangle;
+      break;
+    case 'star':
+      shapeType = pres.ShapeType.star5;
+      break;
+    default:
+      shapeType = pres.ShapeType.rect;
+      break;
+  }
+
+  const fillHex =
+    element.fillHex ||
+    (element.fillColor ? element.fillColor.replace('#', '') : theme.accentHex);
+  const strokeHex =
+    element.strokeHex ||
+    (element.strokeColor ? element.strokeColor.replace('#', '') : theme.border.replace('#', ''));
+  const strokeWidth = element.strokeWidth !== undefined ? element.strokeWidth : 1;
+
+  slide.addShape(shapeType, {
+    x,
+    y,
+    w,
+    h,
+    fill: { color: fillHex },
+    line: { color: strokeHex, width: strokeWidth },
+    hyperlink: element.link ? { url: element.link } : undefined,
+  });
+}
+
+function renderTableElement(
+  pres: pptxgen,
+  slide: pptxgen.Slide,
+  element: TableElement,
+  theme: ReturnType<typeof getTheme>,
+  fallbackBounds: { x: number; y: number; w: number; h: number }
+) {
+  const x = element.x ?? fallbackBounds.x;
+  const y = element.y ?? fallbackBounds.y;
+  const w = element.w ?? Math.min(8.4, fallbackBounds.w);
+  const h = element.h ?? Math.min(3.5, fallbackBounds.h);
+
+  const headerRow = element.headers.map((hText) => ({
+    text: hText,
+    options: {
+      fill: { color: theme.accentHex },
+      color: 'FFFFFF',
+      bold: true,
+      align: 'center' as const,
+      fontSize: 12,
+    },
+  }));
+
+  const dataRows = (element.rows || []).map((row) =>
+    row.map((cellText) => ({
+      text: cellText,
+      options: {
+        color: theme.bodyHex,
+        align: 'left' as const,
+        fontSize: 11,
+      },
+    }))
+  );
+
+  const tableData = [headerRow, ...dataRows];
+  const colCount = Math.max(1, element.headers.length);
+  const colWidth = w / colCount;
+
+  slide.addTable(tableData, {
+    x,
+    y,
+    w,
+    h,
+    colW: Array(colCount).fill(colWidth),
+    border: { pt: 1, color: theme.border.replace('#', '') },
+    fill: { color: theme.cardBg.replace('#', '') },
+  });
+}
+
+function renderChartElement(
+  pres: pptxgen,
+  slide: pptxgen.Slide,
+  element: ChartElement,
+  theme: ReturnType<typeof getTheme>,
+  fallbackBounds: { x: number; y: number; w: number; h: number }
+) {
+  const x = element.x ?? fallbackBounds.x;
+  const y = element.y ?? fallbackBounds.y;
+  const w = element.w ?? Math.min(6.5, fallbackBounds.w);
+  const h = element.h ?? Math.min(3.5, fallbackBounds.h);
+
+  let pptxChartType = pres.ChartType.bar;
+  switch (element.chartType) {
+    case 'pie':
+      pptxChartType = pres.ChartType.pie;
+      break;
+    case 'doughnut':
+      pptxChartType = pres.ChartType.doughnut;
+      break;
+    case 'line':
+      pptxChartType = pres.ChartType.line;
+      break;
+    case 'area':
+      pptxChartType = pres.ChartType.area;
+      break;
+    case 'column':
+    case 'bar':
+    default:
+      pptxChartType = pres.ChartType.bar;
+      break;
+  }
+
+  const labels = element.data.map((d) => d.label);
+  const values = element.data.map((d) => d.value);
+
+  const chartData = [
+    {
+      name: element.title || 'Data',
+      labels,
+      values,
+    },
+  ];
+
+  slide.addChart(pptxChartType, chartData, {
+    x,
+    y,
+    w,
+    h,
+    showTitle: !!element.title,
+    title: element.title,
+    showLegend: true,
+    legendPos: 'b',
+    chartColors: [theme.accentHex, theme.titleHex, '10B981', 'F59E0B', '6366F1', 'EC4899'],
+  });
 }
 
 /**
@@ -607,11 +859,14 @@ export async function exportToPptxFile(
     const paginated = autoPaginatePresentation(presentation);
     const pres = buildPptxPresentation(paginated, options);
     const rawName = options.fileName || paginated.title || 'presentation';
-    const cleanName = `${sanitizeFileName(rawName)}.pptx`;
+    const cleanName = formatPptxFileName(rawName);
 
     if (typeof window !== 'undefined' && typeof document !== 'undefined') {
-      // In browser / iframe environment: write blob directly and trigger download via anchor
-      const blob = (await pres.write({ outputType: 'blob' })) as Blob;
+      // In browser / iframe environment:
+      // Produce an ArrayBuffer and construct a Blob with strict PowerPoint OOXML MIME type.
+      // This guarantees browser download handlers never append .zip to the .pptx filename.
+      const arrayBuffer = (await pres.write({ outputType: 'arraybuffer' })) as ArrayBuffer;
+      const blob = new Blob([arrayBuffer], { type: PPTX_MIME_TYPE });
       const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.style.display = 'none';
@@ -638,6 +893,80 @@ export async function exportToPptxFile(
       success: false,
       fileName: 'presentation.pptx',
       error: errorMessage || 'Failed to export PPTX file',
+    };
+  }
+}
+
+/**
+ * Bundles multiple presentations into a single .zip archive containing individual .pptx files.
+ * The archive is strictly named with .zip and each presentation inside is a valid .pptx file.
+ */
+export async function exportBatchToZipFile(
+  items: { presentation: Presentation }[],
+  options: { zipFileName?: string } = {}
+): Promise<{ success: boolean; fileName: string; error?: string }> {
+  try {
+    const rawZipName = options.zipFileName || 'presentations_bundle';
+    let cleanZipName = sanitizeFileName(rawZipName)
+      .replace(/\.pptx\.zip$/i, '')
+      .replace(/\.zip$/i, '')
+      .trim();
+    if (!cleanZipName) cleanZipName = 'presentations_bundle';
+    cleanZipName = `${cleanZipName}.zip`;
+
+    const zip = new JSZip();
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item.presentation || item.presentation.slides.length === 0) continue;
+      const pres = buildPptxPresentation(item.presentation);
+      const fileName = formatPptxFileName(
+        item.presentation.title || `presentation_${i + 1}`
+      );
+      const isNode =
+        typeof process !== 'undefined' &&
+        !!process.versions?.node &&
+        process.release?.name === 'node';
+      const outputType = isNode ? 'nodebuffer' : 'arraybuffer';
+      const fileData = await pres.write({ outputType });
+      zip.file(fileName, fileData);
+    }
+
+    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+      const zipBlob = await zip.generateAsync({
+        type: 'blob',
+        mimeType: 'application/zip',
+        compression: 'DEFLATE',
+      });
+      const blobUrl = window.URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = blobUrl;
+      a.download = cleanZipName;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        if (a.parentNode) {
+          a.parentNode.removeChild(a);
+        }
+        window.URL.revokeObjectURL(blobUrl);
+      }, 1000);
+    } else {
+      const buffer = await zip.generateAsync({
+        type: 'nodebuffer',
+        compression: 'DEFLATE',
+      });
+      const { promises: fs } = await import('node:fs');
+      await fs.writeFile(cleanZipName, buffer);
+    }
+
+    return { success: true, fileName: cleanZipName };
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    return {
+      success: false,
+      fileName: 'presentations_bundle.zip',
+      error: errorMessage || 'Failed to export batch zip archive',
     };
   }
 }

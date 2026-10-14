@@ -5,6 +5,9 @@ import { Presentation, Slide, SlideTransition } from '../models/presentation';
 import {
   buildPptxPresentation,
   exportToPptxFile,
+  exportBatchToZipFile,
+  formatPptxFileName,
+  PPTX_MIME_TYPE,
   buildTransitionXml,
   injectTransitionIntoSlideXml,
 } from './pptxRenderer';
@@ -893,5 +896,114 @@ describe('Code2PPT Layout Engine & PPTX Renderer Tests', () => {
 
     const slide3Xml = await zip.file('ppt/slides/slide3.xml')!.async('string');
     assert.ok(!slide3Xml.includes('<p:transition'), 'Slide 3 should not have transition');
+  });
+
+  // 28. formatPptxFileName ensures .pptx extension with no .zip, .pptx.zip or duplicate extension
+  it('formatPptxFileName ensures .pptx extension with no .zip, .pptx.zip or duplicate extension', () => {
+    assert.equal(formatPptxFileName('Biology Basics'), 'Biology Basics.pptx');
+    assert.equal(formatPptxFileName('Biology Basics.pptx'), 'Biology Basics.pptx');
+    assert.equal(formatPptxFileName('Biology Basics.pptx.zip'), 'Biology Basics.pptx');
+    assert.equal(formatPptxFileName('Biology Basics.zip'), 'Biology Basics.pptx');
+    assert.equal(formatPptxFileName('Biology/Basics'), 'Biology_Basics.pptx');
+    assert.equal(formatPptxFileName('Presentation.pptx.pptx'), 'Presentation.pptx');
+    assert.equal(formatPptxFileName(''), 'presentation.pptx');
+    assert.equal(formatPptxFileName('   '), 'presentation.pptx');
+  });
+
+  // 29. exportToPptxFile exports valid standalone OOXML presentation with correct MIME type
+  it('exportToPptxFile exports a valid standalone OOXML PPTX file ending directly in .pptx', async () => {
+    const presentation: Presentation = {
+      title: 'Quarterly_Review',
+      theme: 'modern',
+      slides: [
+        {
+          id: 's1',
+          index: 0,
+          title: 'Q1 Review',
+          line: 1,
+          elements: [
+            { id: 'el-1', type: 'text', content: 'Revenue increased by 15% across all regions.', line: 2 },
+            { id: 'el-2', type: 'bullet', content: 'Customer retention reached 98%.', line: 3 },
+          ],
+        },
+      ],
+    };
+
+    assert.equal(
+      PPTX_MIME_TYPE,
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    );
+
+    const result = await exportToPptxFile(presentation, { fileName: 'Quarterly_Review.pptx' });
+    assert.equal(result.success, true);
+    assert.equal(result.fileName, 'Quarterly_Review.pptx');
+    assert.ok(!result.fileName.endsWith('.zip'), 'Must not end in .zip');
+    assert.ok(!result.fileName.includes('.pptx.zip'), 'Must not contain .pptx.zip');
+
+    // Verify it is a valid standalone OOXML package
+    const pres = buildPptxPresentation(presentation);
+    const b64 = (await pres.write({ outputType: 'base64' })) as string;
+    const zip = await JSZip.loadAsync(Buffer.from(b64, 'base64'));
+
+    assert.ok(zip.file('[Content_Types].xml'), 'Must contain [Content_Types].xml');
+    assert.ok(zip.file('ppt/presentation.xml'), 'Must contain ppt/presentation.xml');
+    assert.ok(zip.file('ppt/slides/slide1.xml'), 'Must contain ppt/slides/slide1.xml');
+  });
+
+  // 30. exportBatchToZipFile produces a valid .zip archive containing individual .pptx files
+  it('exportBatchToZipFile produces a valid .zip archive containing individual valid .pptx files', async () => {
+    const deck1: Presentation = {
+      title: 'Deck Alpha',
+      theme: 'modern',
+      slides: [
+        {
+          id: 'd1-s1',
+          index: 0,
+          title: 'Alpha Slide',
+          line: 1,
+          elements: [{ id: 'e1', type: 'text', content: 'Alpha content', line: 2 }],
+        },
+      ],
+    };
+
+    const deck2: Presentation = {
+      title: 'Deck Beta',
+      theme: 'ocean',
+      slides: [
+        {
+          id: 'd2-s1',
+          index: 0,
+          title: 'Beta Slide',
+          line: 1,
+          elements: [{ id: 'e2', type: 'bullet', content: 'Beta point', line: 2 }],
+        },
+      ],
+    };
+
+    const batchItems = [{ presentation: deck1 }, { presentation: deck2 }];
+    const result = await exportBatchToZipFile(batchItems, { zipFileName: 'all_decks' });
+
+    assert.equal(result.success, true);
+    assert.equal(result.fileName, 'all_decks.zip');
+    assert.ok(!result.fileName.includes('.pptx.zip'), 'Archive name must be .zip not .pptx.zip');
+
+    // Inspect the generated bundle using JSZip in Node
+    const fs = await import('node:fs/promises');
+    const zipBuffer = await fs.readFile('all_decks.zip');
+    const outerZip = await JSZip.loadAsync(zipBuffer);
+
+    // Verify individual .pptx files inside the archive
+    assert.ok(outerZip.file('Deck Alpha.pptx'), 'Archive must contain Deck Alpha.pptx');
+    assert.ok(outerZip.file('Deck Beta.pptx'), 'Archive must contain Deck Beta.pptx');
+
+    // Verify that the file inside the ZIP is indeed a valid OOXML PowerPoint presentation
+    const deckAlphaData = await outerZip.file('Deck Alpha.pptx')!.async('nodebuffer');
+    const innerPptxZip = await JSZip.loadAsync(deckAlphaData);
+    assert.ok(innerPptxZip.file('[Content_Types].xml'), 'Internal PPTX must contain [Content_Types].xml');
+    assert.ok(innerPptxZip.file('ppt/presentation.xml'), 'Internal PPTX must contain ppt/presentation.xml');
+    assert.ok(innerPptxZip.file('ppt/slides/slide1.xml'), 'Internal PPTX must contain ppt/slides/slide1.xml');
+
+    // Clean up temporary test file
+    await fs.unlink('all_decks.zip').catch(() => {});
   });
 });

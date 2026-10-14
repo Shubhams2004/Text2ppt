@@ -18,6 +18,8 @@ import {
   FileType,
   LayoutGrid,
   Film,
+  Archive,
+  CheckCircle2,
 } from 'lucide-react';
 import { ValidationIssue } from '../models/presentation';
 import { isJavaScriptOrPptxCode, convertPptxJsToDsl } from '../parser/jsToDslConverter';
@@ -48,6 +50,8 @@ interface EditorProps {
   onRemoveBatchItem?: (index: number) => void;
   onExportSingleBatchItem?: (index: number, format?: ExportFormat) => void;
   onExportAllBatchItems?: (format?: ExportFormat) => void;
+  onExportAllBatchZip?: () => void;
+  onCleanContent?: () => void;
   isExportingAllBatch?: boolean;
   batchExportProgress?: { current: number; total: number } | null;
 }
@@ -70,6 +74,8 @@ export const Editor: React.FC<EditorProps> = ({
   onRemoveBatchItem = () => {},
   onExportSingleBatchItem = () => {},
   onExportAllBatchItems = () => {},
+  onExportAllBatchZip,
+  onCleanContent,
   isExportingAllBatch = false,
   batchExportProgress = null,
 }) => {
@@ -558,6 +564,18 @@ export const Editor: React.FC<EditorProps> = ({
             <span>AI Image</span>
           </button>
 
+          {/* Content Quality Clean Button */}
+          {onCleanContent && (
+            <button
+              onClick={onCleanContent}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/70 hover:bg-emerald-100 dark:hover:bg-emerald-900/80 border border-emerald-200/80 dark:border-emerald-800 rounded-md transition-all cursor-pointer shadow-2xs hover:shadow-xs"
+              title="Apply content quality rules: removes artificial instructions (e.g. 'Must reach 100%'), hollow summaries, and clutter while preserving all facts and metrics."
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Clean Content</span>
+            </button>
+          )}
+
           <div className="w-px h-4 bg-slate-300 dark:bg-slate-700 mx-1" />
 
           {/* Copy Code */}
@@ -649,6 +667,18 @@ export const Editor: React.FC<EditorProps> = ({
                     <FileType className="w-3.5 h-3.5 text-rose-600" />
                     <span>All as PDF</span>
                   </button>
+                  {onExportAllBatchZip && (
+                    <button
+                      onClick={() => {
+                        setIsBannerExportMenuOpen(false);
+                        onExportAllBatchZip();
+                      }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                    >
+                      <Archive className="w-3.5 h-3.5 text-amber-600" />
+                      <span>All as ZIP Archive</span>
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -679,6 +709,7 @@ export const Editor: React.FC<EditorProps> = ({
             onRemove={onRemoveBatchItem}
             onExportSingle={onExportSingleBatchItem}
             onExportAll={onExportAllBatchItems}
+            onExportAllZip={onExportAllBatchZip}
             isExportingAll={isExportingAllBatch}
             exportProgress={batchExportProgress}
             onPasteText={(pastedText) => onChange(pastedText)}

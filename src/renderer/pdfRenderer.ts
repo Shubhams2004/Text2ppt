@@ -340,6 +340,21 @@ function renderPdfFooter(
 }
 
 /**
+ * Normalizes a PDF file name to always end in a single .pdf extension,
+ * stripping any unintended .zip, .pdf.zip, or repeated extensions.
+ */
+export function formatPdfFileName(name: string): string {
+  let clean = sanitizeFileName(name);
+  clean = clean.replace(/\.pdf\.zip$/i, '');
+  clean = clean.replace(/\.zip$/i, '');
+  clean = clean.replace(/(\.pdf)+$/i, '');
+  clean = clean.replace(/\.pptx$/i, '');
+  clean = clean.trim();
+  if (!clean) clean = 'presentation';
+  return `${clean}.pdf`;
+}
+
+/**
  * Exports presentation to PDF format and triggers browser download
  */
 export async function exportToPdfFile(
@@ -350,10 +365,26 @@ export async function exportToPdfFile(
     const paginated = autoPaginatePresentation(presentation);
     const doc = buildPdfPresentation(paginated, options);
     const rawName = options.fileName || paginated.title || 'presentation';
-    const cleanName = `${sanitizeFileName(rawName)}.pdf`;
-
+    const cleanName = formatPdfFileName(rawName);
     if (typeof window !== 'undefined' && typeof document !== 'undefined') {
-      doc.save(cleanName);
+      const rawBlob = doc.output('blob');
+      const pdfBlob =
+        rawBlob.type === 'application/pdf'
+          ? rawBlob
+          : new Blob([rawBlob], { type: 'application/pdf' });
+      const blobUrl = window.URL.createObjectURL(pdfBlob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = blobUrl;
+      a.download = cleanName;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        if (a.parentNode) {
+          a.parentNode.removeChild(a);
+        }
+        window.URL.revokeObjectURL(blobUrl);
+      }, 1000);
     }
 
     return { success: true, fileName: cleanName };

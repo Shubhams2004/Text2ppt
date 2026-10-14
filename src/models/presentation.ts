@@ -33,6 +33,11 @@ export interface BaseSlideElement {
   type: SlideElementType;
   content: string;
   line: number;
+  link?: string;
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
 }
 
 /**
@@ -65,30 +70,59 @@ export interface QuoteElement extends BaseSlideElement {
 }
 
 /**
- * Extensible element stubs for future commands
+ * Image element supporting URLs, data URIs, and device uploads
  */
 export interface ImageElement extends BaseSlideElement {
   type: 'image';
   src: string;
   url?: string;
   alt?: string;
+  fit?: 'contain' | 'cover' | 'fill';
+}
+
+export type ShapeType =
+  | 'rect'
+  | 'round-rect'
+  | 'circle'
+  | 'ellipse'
+  | 'line'
+  | 'arrow'
+  | 'triangle'
+  | 'star';
+
+export interface ShapeElement extends BaseSlideElement {
+  type: 'shape';
+  shapeType: ShapeType;
+  fillColor?: string;
+  fillHex?: string;
+  strokeColor?: string;
+  strokeHex?: string;
+  strokeWidth?: number;
+  opacity?: number;
 }
 
 export interface TableElement extends BaseSlideElement {
   type: 'table';
-  headers?: string[];
-  rows?: string[][];
+  headers: string[];
+  rows: string[][];
+  headerBg?: string;
+  borderColor?: string;
+}
+
+export type ChartType = 'bar' | 'column' | 'pie' | 'doughnut' | 'line' | 'area';
+
+export interface ChartDataItem {
+  label: string;
+  value: number;
 }
 
 export interface ChartElement extends BaseSlideElement {
   type: 'chart';
-  chartType?: 'bar' | 'pie' | 'line';
-  data?: Array<{ label: string; value: number }>;
-}
-
-export interface ShapeElement extends BaseSlideElement {
-  type: 'shape';
-  shapeType?: 'rect' | 'circle' | 'line';
+  chartType: ChartType;
+  title?: string;
+  data: ChartDataItem[];
+  categories?: string[];
+  series?: Array<{ name: string; values: number[] }>;
 }
 
 export type SlideElement =
@@ -192,6 +226,8 @@ export interface Slide {
   layout?: SlideLayout;
   transition?: SlideTransition;
   elements: SlideElement[];
+  notes?: string;
+  background?: string;
 }
 
 export interface PresentationMetadata {

@@ -13,6 +13,7 @@ import {
   Sparkles,
   ChevronDown,
   FileType,
+  Archive,
 } from 'lucide-react';
 import { BatchPresentationItem } from '../parser/batchParser';
 
@@ -30,6 +31,7 @@ interface BatchManagerProps {
   onRemove: (index: number) => void;
   onExportSingle: (index: number, format?: ExportFormat) => void;
   onExportAll: (format?: ExportFormat) => void;
+  onExportAllZip?: () => void;
   onEditInSource: (line: number) => void;
   onPasteText?: (text: string) => void;
   isExportingAll: boolean;
@@ -48,6 +50,7 @@ export const BatchManager: React.FC<BatchManagerProps> = ({
   onRemove,
   onExportSingle,
   onExportAll,
+  onExportAllZip,
   onEditInSource,
   onPasteText,
   isExportingAll,
@@ -221,6 +224,21 @@ export const BatchManager: React.FC<BatchManagerProps> = ({
                     <div className="text-[10px] text-slate-500">PDF documents</div>
                   </div>
                 </button>
+                {onExportAllZip && (
+                  <button
+                    onClick={() => {
+                      setIsExportAllMenuOpen(false);
+                      onExportAllZip();
+                    }}
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 text-left transition-colors cursor-pointer"
+                  >
+                    <Archive className="w-4 h-4 text-amber-600" />
+                    <div>
+                      <div className="font-medium">All as ZIP (.zip)</div>
+                      <div className="text-[10px] text-slate-500">ZIP archive with separate .pptx files</div>
+                    </div>
+                  </button>
+                )}
               </div>
             )}
           </div>

@@ -1,12 +1,17 @@
 import {
   BulletElement,
+  ChartElement,
+  ChartType,
   ImageElement,
   ParseResult,
   Presentation,
+  ShapeElement,
+  ShapeType,
   Slide,
   SlideElement,
   SlideLayout,
   SlideTransition,
+  TableElement,
   TextElement,
   TransitionDirection,
   TransitionSpeed,
@@ -16,6 +21,7 @@ import {
   ValidationIssue,
 } from '../models/presentation';
 import { countPresentationDeclarations, parseBatchPresentations } from './batchParser';
+import { isQualityCleanRequested, cleanPresentationModel } from '../utils/contentQuality';
 
 /**
  * Recognized bullet markers:
@@ -64,6 +70,9 @@ const LAYOUT_PREFIX_REGEX = /^layout\s*:\s*(.+)$/i;
  */
 const IMAGE_PREFIX_REGEX = /^(?:image|img)\s*:\s*(.+)$/i;
 const MD_IMAGE_REGEX = /^!\[([^\]]*)\]\(([^)]+)\)$/;
+const SHAPE_PREFIX_REGEX = /^shape\s*:\s*(.+)$/i;
+const CHART_PREFIX_REGEX = /^chart\s*:\s*(.+)$/i;
+const NOTES_PREFIX_REGEX = /^(?:speaker\s+)?notes?\s*:\s*(.+)$/i;
 
 /**
  * Markdown heading prefixes
@@ -243,6 +252,11 @@ export function parseSimpleText(rawText: string): ParseResult {
       continue;
     }
 
+    // Skip clean/quality directive lines
+    if (/^\s*(?:#|--|\/\/)?\s*(?:clean|cleanup|quality_clean)\b/i.test(trimmed)) {
+      continue;
+    }
+
     // Skip explicit presentation title line if already captured
     if (lineNum === presentationTitleLine && presentationTitle) {
       const isTitlePrefix = TITLE_PREFIX_REGEX.test(trimmed) || MD_H1_REGEX.test(trimmed);
@@ -335,6 +349,143 @@ export function parseSimpleText(rawText: string): ParseResult {
         };
         currentSlide!.elements.push(imgEl);
       }
+      continue;
+    }
+
+    // Check for Markdown table row, e.g. "| Col 1 | Col 2 |"
+    if (trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.includes('|')) {
+      flushPendingText();
+      if (!currentSlide) {
+        createSlide(presentationTitle || 'Data Overview', lineNum);
+        firstHeadingFound = true;
+      }
+
+      const tableLines: string[] = [];
+      let j = i;
+      while (j < lines.length && lines[j].trim().startsWith('|') && lines[j].trim().endsWith('|')) {
+        tableLines.push(lines[j].trim());
+        j++;
+      }
+
+      const parsedRows = tableLines
+        .filter((tl) => !/^[|\s-:]+$/.test(tl))
+        .map((tl) =>
+          tl
+            .slice(1, -1)
+            .split('|')
+            .map((cell) => cell.trim())
+        );
+
+      if (parsedRows.length > 0) {
+        const headers = parsedRows[0];
+        const rows = parsedRows.slice(1);
+        elementCounter++;
+        const tableEl: TableElement = {
+          id: `el-${elementCounter}`,
+          type: 'table',
+          content: 'Table',
+          headers,
+          rows,
+          line: lineNum,
+        };
+        currentSlide!.elements.push(tableEl);
+        i = j - 1;
+        continue;
+      }
+    }
+
+    // Check for shape prefix: "Shape: rect" or "Shape: arrow"
+    const shapeMatch = trimmed.match(SHAPE_PREFIX_REGEX);
+    if (shapeMatch) {
+      flushPendingText();
+      if (!currentSlide) {
+        createSlide(presentationTitle || 'Visual Slide', lineNum);
+        firstHeadingFound = true;
+      }
+      const rawShape = shapeMatch[1].toLowerCase().trim();
+      let shapeType: ShapeType = 'rect';
+      if (rawShape.includes('round')) shapeType = 'round-rect';
+      else if (rawShape.includes('circle')) shapeType = 'circle';
+      else if (rawShape.includes('ellipse')) shapeType = 'ellipse';
+      else if (rawShape.includes('arrow')) shapeType = 'arrow';
+      else if (rawShape.includes('line')) shapeType = 'line';
+      else if (rawShape.includes('triangle')) shapeType = 'triangle';
+      else if (rawShape.includes('star')) shapeType = 'star';
+
+      elementCounter++;
+      const shapeEl: ShapeElement = {
+        id: `el-${elementCounter}`,
+        type: 'shape',
+        content: shapeType,
+        shapeType,
+        line: lineNum,
+      };
+      currentSlide!.elements.push(shapeEl);
+      continue;
+    }
+
+    // Check for chart prefix: "Chart: bar (Q1: 10, Q2: 20)"
+    const chartMatch = trimmed.match(CHART_PREFIX_REGEX);
+    if (chartMatch) {
+      flushPendingText();
+      if (!currentSlide) {
+        createSlide(presentationTitle || 'Metrics', lineNum);
+        firstHeadingFound = true;
+      }
+      const rawChart = chartMatch[1].trim();
+      const typeMatch = rawChart.match(/^([a-z]+)/i);
+      const rawType = (typeMatch ? typeMatch[1] : 'bar').toLowerCase();
+      let chartType: ChartType = 'bar';
+      if (rawType.includes('pie')) chartType = 'pie';
+      else if (rawType.includes('doughnut') || rawType.includes('donut')) chartType = 'doughnut';
+      else if (rawType.includes('line')) chartType = 'line';
+      else if (rawType.includes('area')) chartType = 'area';
+      else if (rawType.includes('column') || rawType.includes('col')) chartType = 'column';
+
+      const dataItems: Array<{ label: string; value: number }> = [];
+      const dataContent = rawChart.replace(/^[a-z]+\s*[:(]?/i, '').replace(/[)]$/, '');
+      if (dataContent) {
+        const parts = dataContent.split(/[,;]/);
+        for (const part of parts) {
+          const [k, v] = part.split(/[:=]/);
+          if (k && v) {
+            const num = parseFloat(v.trim());
+            if (!isNaN(num)) {
+              dataItems.push({ label: k.trim(), value: num });
+            }
+          }
+        }
+      }
+
+      if (dataItems.length === 0) {
+        dataItems.push(
+          { label: 'Item 1', value: 40 },
+          { label: 'Item 2', value: 60 }
+        );
+      }
+
+      elementCounter++;
+      const chartEl: ChartElement = {
+        id: `el-${elementCounter}`,
+        type: 'chart',
+        content: `${chartType} chart`,
+        chartType,
+        data: dataItems,
+        line: lineNum,
+      };
+      currentSlide!.elements.push(chartEl);
+      continue;
+    }
+
+    // Check for speaker notes: "Notes: ..."
+    const notesMatch = trimmed.match(NOTES_PREFIX_REGEX);
+    if (notesMatch) {
+      flushPendingText();
+      if (!currentSlide) {
+        createSlide(presentationTitle || 'Slide', lineNum);
+        firstHeadingFound = true;
+      }
+      currentSlide!.notes = notesMatch[1].trim();
       continue;
     }
 
@@ -469,13 +620,20 @@ export function parseSimpleText(rawText: string): ParseResult {
 
   const hasErrors = issues.some((i) => i.severity === 'error');
 
+  let presentation: Presentation = {
+    title: presentationTitle,
+    theme: 'modern',
+    transition: presentationTransition,
+    slides,
+  };
+
+  if (isQualityCleanRequested(rawText)) {
+    const cleaned = cleanPresentationModel(presentation);
+    presentation = cleaned.presentation;
+  }
+
   return {
-    presentation: {
-      title: presentationTitle,
-      theme: 'modern',
-      transition: presentationTransition,
-      slides,
-    },
+    presentation,
     issues,
     hasErrors,
   };

@@ -6,9 +6,10 @@ import {
   serializeBatchPresentations,
   countPresentationDeclarations,
 } from './parser/batchParser';
-import { exportToPptxFile } from './renderer/pptxRenderer';
+import { exportToPptxFile, exportBatchToZipFile } from './renderer/pptxRenderer';
 import { exportToPdfFile } from './renderer/pdfRenderer';
 import { autoPaginatePresentation } from './renderer/layoutSystem';
+import { cleanPresentationText } from './utils/contentQuality';
 import { DEFAULT_CODE, DEFAULT_SIMPLE_TEXT, DEFAULT_BATCH_TEXT } from './examples/samplePresentations';
 import { Header, ExportFormat } from './components/Header';
 import { Editor, InputMode } from './components/Editor';
@@ -317,18 +318,71 @@ export default function App() {
     }
   }, [batchResult.items, batchResult.totalPresentations]);
 
+  // Bulk ZIP export handler: compiles all presentations into a single .zip archive containing .pptx files
+  const handleExportAllBatchZip = useCallback(async () => {
+    if (batchResult.totalPresentations > 20) {
+      return;
+    }
+    const validItems = batchResult.items.filter(
+      (i) => !i.hasErrors && i.presentation.slides.length > 0
+    );
+    if (validItems.length === 0) return;
+
+    setIsExportingAllBatch(true);
+    setBatchExportProgress({ current: 0, total: validItems.length });
+
+    try {
+      await exportBatchToZipFile(validItems, {
+        zipFileName: 'presentations_bundle',
+      });
+    } finally {
+      setIsExportingAllBatch(false);
+      setBatchExportProgress(null);
+    }
+  }, [batchResult.items, batchResult.totalPresentations]);
+
+  // Content quality clean toast & handler
+  const [qualityToast, setQualityToast] = useState<string | null>(null);
+
+  const handleCleanContent = useCallback(() => {
+    const currentText = inputMode === 'code' ? code : inputMode === 'simple-text' ? simpleText : batchText;
+    const { cleanedText, report } = cleanPresentationText(
+      currentText,
+      inputMode === 'code' ? 'code' : 'simple'
+    );
+    if (report.hasChanges) {
+      if (inputMode === 'code') setCode(cleanedText);
+      else if (inputMode === 'simple-text') setSimpleText(cleanedText);
+      else setBatchText(cleanedText);
+
+      const count = report.removedFillerCount + report.refinedPreambleCount + report.emptySlidesRemoved;
+      setQualityToast(`Cleaned ${count} item(s): removed artificial instructions & filler.`);
+      setTimeout(() => setQualityToast(null), 4000);
+    } else {
+      setQualityToast('Content quality check passed: no artificial filler detected.');
+      setTimeout(() => setQualityToast(null), 3000);
+    }
+  }, [inputMode, code, simpleText, batchText]);
+
   // Line selection from issues panel
   const handleSelectLine = useCallback((line: number) => {
     setActiveLine(line);
     setActiveMobileTab('editor');
   }, []);
 
+  const [lastExportFormat, setLastExportFormat] = useState<ExportFormat>('pptx');
+  const [exportingFormat, setExportingFormat] = useState<ExportFormat | null>(null);
+  const [exportSuccessFormat, setExportSuccessFormat] = useState<ExportFormat | null>(null);
+
   // Export PPTX / PDF Handler for currently active presentation
   const handleExport = useCallback(async (format: ExportFormat = 'pptx') => {
     if (presentation.slides.length === 0) return;
 
+    setLastExportFormat(format);
+    setExportingFormat(format);
     setIsExporting(true);
     setExportSuccess(false);
+    setExportSuccessFormat(null);
 
     try {
       const fileName = presentation.title || 'presentation';
@@ -345,7 +399,11 @@ export default function App() {
 
       if (result.success) {
         setExportSuccess(true);
-        setTimeout(() => setExportSuccess(false), 3000);
+        setExportSuccessFormat(format);
+        setTimeout(() => {
+          setExportSuccess(false);
+          setExportSuccessFormat(null);
+        }, 3000);
       } else {
         console.error('Export failed:', result.error);
       }
@@ -353,16 +411,24 @@ export default function App() {
       console.error('Unexpected export error:', err);
     } finally {
       setIsExporting(false);
+      setExportingFormat(null);
     }
   }, [presentation]);
 
-  // Global productivity shortcuts: Ctrl/Cmd+S or Ctrl/Cmd+E to export PPTX, Ctrl/Cmd+/ for help
+  // Global productivity shortcuts: Ctrl/Cmd+S for PPTX, Ctrl/Cmd+P or Shift+Ctrl+S for PDF, Ctrl/Cmd+/ for help
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       const isCmdOrCtrl = e.metaKey || e.ctrlKey;
       if (isCmdOrCtrl && (e.key === 's' || e.key === 'S')) {
         e.preventDefault();
-        handleExport('pptx');
+        if (e.shiftKey) {
+          handleExport('pdf');
+        } else {
+          handleExport('pptx');
+        }
+      } else if (isCmdOrCtrl && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault();
+        handleExport('pdf');
       } else if (isCmdOrCtrl && (e.key === 'e' || e.key === 'E')) {
         e.preventDefault();
         handleExport('pptx');
@@ -387,13 +453,17 @@ export default function App() {
         onReset={handleReset}
         onExport={handleExport}
         isExporting={isExporting}
+        exportingFormat={exportingFormat}
         onOpenHelp={() => setIsHelpOpen(true)}
         hasErrors={hasErrors}
         activeMobileTab={activeMobileTab}
         onMobileTabChange={setActiveMobileTab}
         exportSuccess={exportSuccess}
+        exportSuccessFormat={exportSuccessFormat}
+        lastExportFormat={lastExportFormat}
         totalBatchCount={batchResult.totalPresentations}
         onExportAllBatch={handleExportAllBatch}
+        onExportAllBatchZip={handleExportAllBatchZip}
         isExportingAllBatch={isExportingAllBatch}
         isDarkMode={isDarkMode}
         onToggleDarkMode={toggleDarkMode}
@@ -427,6 +497,8 @@ export default function App() {
             onRemoveBatchItem={handleRemoveBatch}
             onExportSingleBatchItem={handleExportSingleBatch}
             onExportAllBatchItems={handleExportAllBatch}
+            onExportAllBatchZip={handleExportAllBatchZip}
+            onCleanContent={handleCleanContent}
             isExportingAllBatch={isExportingAllBatch}
             batchExportProgress={batchExportProgress}
           />
@@ -450,6 +522,18 @@ export default function App() {
           />
         </section>
       </main>
+
+      {/* Floating Quality Toast Notification */}
+      {qualityToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-12 right-6 z-50 bg-slate-900/95 dark:bg-slate-100 text-white dark:text-slate-900 px-4 py-2.5 rounded-xl shadow-2xl border border-slate-700 dark:border-slate-300 text-xs font-medium flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150"
+        >
+          <span className="w-2 h-2 rounded-full bg-emerald-400 dark:bg-emerald-600 flex-none animate-pulse" />
+          <span>{qualityToast}</span>
+        </div>
+      )}
 
       {/* Bottom Validation / Status Area */}
       <ValidationStatus
