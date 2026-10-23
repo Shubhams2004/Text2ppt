@@ -36,6 +36,8 @@ import {
   CornerDownRight,
   Settings,
   ChevronDown,
+  FileDown,
+  FileType,
 } from 'lucide-react';
 import {
   ChartElement,
@@ -296,6 +298,8 @@ export interface PreviewProps {
   canRedo?: boolean;
   onUndo?: () => void;
   onRedo?: () => void;
+  onExport?: (format: 'pptx' | 'pdf') => void;
+  isExporting?: boolean;
 }
 
 export const Preview: React.FC<PreviewProps> = ({
@@ -311,6 +315,8 @@ export const Preview: React.FC<PreviewProps> = ({
   canRedo = false,
   onUndo,
   onRedo,
+  onExport,
+  isExporting = false,
 }) => {
   const [viewMode, setViewMode] = useState<'single' | 'grid'>('single');
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -855,6 +861,29 @@ export const Preview: React.FC<PreviewProps> = ({
 
         {/* Right: Studio Visual Editor Toggle & View Modes */}
         <div className="flex items-center gap-1">
+          {onExport && (
+            <div className="hidden sm:flex items-center gap-1 mr-1">
+              <button
+                onClick={() => onExport('pptx')}
+                disabled={isExporting || totalSlides === 0}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors cursor-pointer disabled:opacity-40"
+                title="Download presentation as PowerPoint (.pptx)"
+              >
+                <FileDown className="w-3 h-3" />
+                <span>PPTX</span>
+              </button>
+              <button
+                onClick={() => onExport('pdf')}
+                disabled={isExporting || totalSlides === 0}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/80 hover:bg-rose-100 dark:hover:bg-rose-900/60 transition-colors cursor-pointer disabled:opacity-40"
+                title="Download presentation as vector PDF (.pdf)"
+              >
+                <FileType className="w-3 h-3" />
+                <span>PDF</span>
+              </button>
+            </div>
+          )}
+
           {/* Visual Editor Mode Toggle */}
           <button
             onClick={() => {

@@ -29,7 +29,7 @@ export const ValidationStatus: React.FC<ValidationStatusProps> = ({
   const warningCount = issues.filter((i) => i.severity === 'warning').length;
 
   return (
-    <div className="flex-none border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 transition-all">
+    <div className="flex-none border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 transition-all mb-14 md:mb-0">
       {/* Compact Status Bar */}
       <div className="px-4 py-2 flex items-center justify-between gap-3 text-xs">
         {/* Left: Status Message */}
@@ -52,7 +52,7 @@ export const ValidationStatus: React.FC<ValidationStatusProps> = ({
             <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
               <CheckCircle2 className="w-4 h-4 flex-none" />
               <span>
-                Presentation valid · {slideCount} {slideCount === 1 ? 'slide' : 'slides'} ready for PPTX export
+                Presentation valid · {slideCount} {slideCount === 1 ? 'slide' : 'slides'} ready for PPTX & PDF export
               </span>
             </div>
           )}

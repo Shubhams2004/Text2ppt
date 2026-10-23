@@ -1,5 +1,13 @@
 import { jsPDF } from 'jspdf';
-import { Presentation, Slide, SlideElement } from '../models/presentation';
+import {
+  ChartElement,
+  ImageElement,
+  Presentation,
+  ShapeElement,
+  Slide,
+  SlideElement,
+  TableElement,
+} from '../models/presentation';
 import { getTheme, THEMES } from '../themes/presentationThemes';
 import {
   autoPaginatePresentation,
@@ -41,7 +49,11 @@ export function buildPdfPresentation(
     }
 
     // Slide background fill
-    doc.setFillColor(theme.bgHex.startsWith('#') ? theme.bgHex : `#${theme.bgHex}`);
+    let bg = theme.bgHex;
+    if (slideData.background && slideData.background.startsWith('#')) {
+      bg = slideData.background;
+    }
+    doc.setFillColor(bg.startsWith('#') ? bg : `#${bg}`);
     doc.rect(0, 0, 10, 5.625, 'F');
 
     // Compute deterministic layout for this slide
@@ -176,24 +188,25 @@ function renderPdfSlideWithLayout(
     return;
   }
 
-  // 4. Standard body content
-  // 4. Standard body content
-  const nonImageElements = slideData.elements.filter((el) => el.type !== 'image');
-  const explicitElements = nonImageElements.filter((el) => el.x !== undefined && el.y !== undefined);
-  const flowElements = nonImageElements.filter((el) => el.x === undefined || el.y === undefined);
+  // 4. Standard body text content
+  const textElements = slideData.elements.filter(
+    (el) => el.type !== 'image' && el.type !== 'shape' && el.type !== 'table' && el.type !== 'chart'
+  );
+  const explicitTextElements = textElements.filter((el) => el.x !== undefined && el.y !== undefined);
+  const flowTextElements = textElements.filter((el) => el.x === undefined || el.y === undefined);
 
-  if (!layout.body.isEmpty && flowElements.length > 0) {
+  if (!layout.body.isEmpty && flowTextElements.length > 0) {
     renderPdfContentFlow(
       doc,
-      flowElements,
+      flowTextElements,
       layout.body.bounds,
       layout.body.typography,
       theme
     );
   }
 
-  // Render explicitly positioned elements directly
-  explicitElements.forEach((el) => {
+  // Render explicitly positioned text elements directly
+  explicitTextElements.forEach((el) => {
     const x = el.x!;
     const y = el.y!;
     const w = el.w ?? 4.0;
@@ -206,6 +219,295 @@ function renderPdfSlideWithLayout(
     const lines = doc.splitTextToSize(el.content, w);
     doc.text(lines, x, y + (fontSize / 72) * 0.95);
   });
+
+  // Render explicitly positioned images
+  const explicitImageElements = slideData.elements.filter(
+    (el): el is ImageElement => el.type === 'image' && el.x !== undefined && el.y !== undefined
+  );
+  explicitImageElements.forEach((img) => {
+    try {
+      const src = img.src || img.url || img.content;
+      if (!src) return;
+      const x = img.x!;
+      const y = img.y!;
+      const w = img.w ?? 4.0;
+      const h = img.h ?? 3.0;
+
+      if (src.startsWith('data:image/')) {
+        let format = 'PNG';
+        if (src.includes('image/jpeg')) format = 'JPEG';
+        else if (src.includes('image/webp')) format = 'WEBP';
+        doc.addImage(src, format, x, y, w, h);
+      } else {
+        // Fallback placeholder box if external URL
+        const bg = theme.isDark ? '#1E293B' : '#F8FAFC';
+        doc.setFillColor(bg);
+        doc.rect(x, y, w, h, 'FD');
+        doc.setFontSize(10);
+        doc.setTextColor('#94A3B8');
+        doc.text(img.alt || 'Image', x + w / 2, y + h / 2, { align: 'center' });
+      }
+    } catch (err) {
+      console.warn('Could not add explicit image to PDF:', err);
+    }
+  });
+
+  // 5. Render Shapes
+  const shapeElements = slideData.elements.filter((el): el is ShapeElement => el.type === 'shape');
+  shapeElements.forEach((shapeEl, idx) => {
+    const fallbackBounds = {
+      x: layout.body.bounds.x + idx * 1.5,
+      y: layout.body.bounds.y + (textElements.length > 0 ? 2.0 : 0.2),
+      w: 2.2,
+      h: 1.4,
+    };
+    renderPdfShapeElement(doc, shapeEl, theme, fallbackBounds);
+  });
+
+  // 6. Render Tables
+  const tableElements = slideData.elements.filter((el): el is TableElement => el.type === 'table');
+  tableElements.forEach((tableEl) => {
+    const fallbackBounds = {
+      x: layout.body.bounds.x,
+      y: layout.body.bounds.y + (textElements.length > 0 ? 1.6 : 0.1),
+      w: layout.body.bounds.w,
+      h: Math.min(3.6, layout.body.bounds.h),
+    };
+    renderPdfTableElement(doc, tableEl, theme, fallbackBounds);
+  });
+
+  // 7. Render Charts
+  const chartElements = slideData.elements.filter((el): el is ChartElement => el.type === 'chart');
+  chartElements.forEach((chartEl) => {
+    const fallbackBounds = {
+      x: layout.body.bounds.x,
+      y: layout.body.bounds.y + (textElements.length > 0 ? 1.6 : 0.1),
+      w: Math.min(6.5, layout.body.bounds.w),
+      h: Math.min(3.4, layout.body.bounds.h),
+    };
+    renderPdfChartElement(doc, chartEl, theme, fallbackBounds);
+  });
+}
+
+/**
+ * Renders vector shapes in PDF
+ */
+function renderPdfShapeElement(
+  doc: jsPDF,
+  element: ShapeElement,
+  theme: ReturnType<typeof getTheme>,
+  fallbackBounds: { x: number; y: number; w: number; h: number }
+) {
+  const x = element.x ?? fallbackBounds.x;
+  const y = element.y ?? fallbackBounds.y;
+  const w = element.w ?? fallbackBounds.w;
+  const h = element.h ?? fallbackBounds.h;
+
+  const fillHex =
+    element.fillHex ||
+    (element.fillColor ? element.fillColor : theme.accentHex);
+  const strokeHex =
+    element.strokeHex ||
+    (element.strokeColor ? element.strokeColor : theme.border);
+  const strokeWidth = element.strokeWidth !== undefined ? element.strokeWidth * 0.015 : 0.015;
+
+  const validFill = fillHex.startsWith('#') ? fillHex : `#${fillHex}`;
+  const validStroke = strokeHex.startsWith('#') ? strokeHex : `#${strokeHex}`;
+
+  doc.setFillColor(validFill);
+  doc.setDrawColor(validStroke);
+  doc.setLineWidth(strokeWidth);
+
+  switch (element.shapeType) {
+    case 'round-rect':
+      doc.roundedRect(x, y, w, h, 0.08, 0.08, 'FD');
+      break;
+    case 'circle':
+    case 'ellipse': {
+      const rx = w / 2;
+      const ry = h / 2;
+      doc.ellipse(x + rx, y + ry, rx, ry, 'FD');
+      break;
+    }
+    case 'line':
+      doc.line(x, y + h / 2, x + w, y + h / 2);
+      break;
+    case 'triangle':
+      doc.triangle(x + w / 2, y, x, y + h, x + w, y + h, 'FD');
+      break;
+    case 'arrow': {
+      const shaftH = h * 0.4;
+      const shaftY = y + (h - shaftH) / 2;
+      const headW = w * 0.35;
+      doc.rect(x, shaftY, w - headW, shaftH, 'FD');
+      doc.triangle(x + w - headW, y, x + w - headW, y + h, x + w, y + h / 2, 'FD');
+      break;
+    }
+    case 'star': {
+      // 5-point star rendered with 2 overlapping triangles
+      doc.triangle(x + w / 2, y, x, y + h * 0.75, x + w, y + h * 0.75, 'FD');
+      doc.triangle(x + w / 2, y + h, x, y + h * 0.25, x + w, y + h * 0.25, 'FD');
+      break;
+    }
+    case 'rect':
+    default:
+      doc.rect(x, y, w, h, 'FD');
+      break;
+  }
+}
+
+/**
+ * Renders data tables in PDF
+ */
+function renderPdfTableElement(
+  doc: jsPDF,
+  element: TableElement,
+  theme: ReturnType<typeof getTheme>,
+  fallbackBounds: { x: number; y: number; w: number; h: number }
+) {
+  const x = element.x ?? fallbackBounds.x;
+  const y = element.y ?? fallbackBounds.y;
+  const w = element.w ?? Math.min(8.4, fallbackBounds.w);
+  const headers = element.headers || ['Column 1', 'Column 2'];
+  const rows = element.rows || [];
+  const colCount = Math.max(1, headers.length);
+  const colWidth = w / colCount;
+  const headerHeight = 0.38;
+  const rowHeight = 0.32;
+
+  // Header background
+  const headerBg = theme.accentHex.startsWith('#') ? theme.accentHex : `#${theme.accentHex}`;
+  doc.setFillColor(headerBg);
+  doc.rect(x, y, w, headerHeight, 'F');
+
+  // Header text
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor('#FFFFFF');
+  headers.forEach((hText, colIdx) => {
+    const cellX = x + colIdx * colWidth + 0.08;
+    const cellY = y + headerHeight * 0.7;
+    const truncated = doc.splitTextToSize(hText, colWidth - 0.16)[0] || hText;
+    doc.text(truncated, cellX, cellY);
+  });
+
+  // Rows
+  const borderColor = theme.border.startsWith('#') ? theme.border : `#${theme.border}`;
+  doc.setDrawColor(borderColor);
+  doc.setLineWidth(0.01);
+
+  rows.forEach((row, rowIdx) => {
+    const rowY = y + headerHeight + rowIdx * rowHeight;
+    // Alternating fill
+    const rowBg = rowIdx % 2 === 0 ? (theme.isDark ? '#1E293B' : '#FFFFFF') : (theme.isDark ? '#0F172A' : '#F8FAFC');
+    doc.setFillColor(rowBg);
+    doc.rect(x, rowY, w, rowHeight, 'FD');
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    const textCol = theme.bodyHex.startsWith('#') ? theme.bodyHex : `#${theme.bodyHex}`;
+    doc.setTextColor(textCol);
+
+    row.forEach((cellText, colIdx) => {
+      const cellX = x + colIdx * colWidth + 0.08;
+      const cellY = rowY + rowHeight * 0.7;
+      const truncated = doc.splitTextToSize(cellText, colWidth - 0.16)[0] || cellText;
+      doc.text(truncated, cellX, cellY);
+    });
+  });
+
+  // Table outer border
+  doc.setDrawColor(borderColor);
+  doc.setLineWidth(0.015);
+  doc.rect(x, y, w, headerHeight + rows.length * rowHeight, 'S');
+}
+
+/**
+ * Renders data charts in PDF
+ */
+function renderPdfChartElement(
+  doc: jsPDF,
+  element: ChartElement,
+  theme: ReturnType<typeof getTheme>,
+  fallbackBounds: { x: number; y: number; w: number; h: number }
+) {
+  const x = element.x ?? fallbackBounds.x;
+  const y = element.y ?? fallbackBounds.y;
+  const w = element.w ?? Math.min(6.5, fallbackBounds.w);
+  const h = element.h ?? Math.min(3.4, fallbackBounds.h);
+
+  // Background frame
+  const bg = theme.isDark ? '#1E293B' : '#F8FAFC';
+  doc.setFillColor(bg);
+  const border = theme.border.startsWith('#') ? theme.border : `#${theme.border}`;
+  doc.setDrawColor(border);
+  doc.setLineWidth(0.015);
+  doc.roundedRect(x, y, w, h, 0.08, 0.08, 'FD');
+
+  // Chart Title
+  let contentTop = y + 0.25;
+  if (element.title) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    const titleCol = theme.titleHex.startsWith('#') ? theme.titleHex : `#${theme.titleHex}`;
+    doc.setTextColor(titleCol);
+    doc.text(element.title, x + 0.2, contentTop);
+    contentTop += 0.25;
+  }
+
+  const data = element.data || [];
+  if (data.length === 0) return;
+
+  const chartAreaX = x + 0.4;
+  const chartAreaY = contentTop;
+  const chartAreaW = w - 0.8;
+  const chartAreaH = h - (contentTop - y) - 0.4;
+
+  const maxVal = Math.max(...data.map((d) => d.value), 1);
+  const palette = [
+    theme.accentHex.startsWith('#') ? theme.accentHex : `#${theme.accentHex}`,
+    '#3B82F6',
+    '#10B981',
+    '#F59E0B',
+    '#8B5CF6',
+    '#EC4899',
+  ];
+
+  // Render Bar / Column Chart
+  const barCount = data.length;
+  const barSpacing = chartAreaW / barCount;
+  const barWidth = barSpacing * 0.6;
+
+  data.forEach((item, idx) => {
+    const barX = chartAreaX + idx * barSpacing + (barSpacing - barWidth) / 2;
+    const barHeight = Math.max(0.05, (item.value / maxVal) * (chartAreaH - 0.3));
+    const barY = chartAreaY + chartAreaH - barHeight;
+
+    const barColor = palette[idx % palette.length];
+    doc.setFillColor(barColor);
+    doc.rect(barX, barY, barWidth, barHeight, 'F');
+
+    // Label under bar
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor('#94A3B8');
+    const labelLines = doc.splitTextToSize(item.label, barSpacing);
+    doc.text(labelLines[0] || item.label, barX + barWidth / 2, chartAreaY + chartAreaH + 0.15, {
+      align: 'center',
+    });
+
+    // Value above bar
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    const valCol = theme.titleHex.startsWith('#') ? theme.titleHex : `#${theme.titleHex}`;
+    doc.setTextColor(valCol);
+    doc.text(String(item.value), barX + barWidth / 2, barY - 0.05, { align: 'center' });
+  });
+
+  // Base axis line
+  doc.setDrawColor('#94A3B8');
+  doc.setLineWidth(0.01);
+  doc.line(chartAreaX, chartAreaY + chartAreaH, chartAreaX + chartAreaW, chartAreaY + chartAreaH);
 }
 
 /**

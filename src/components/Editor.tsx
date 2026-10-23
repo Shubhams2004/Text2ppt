@@ -301,12 +301,12 @@ export const Editor: React.FC<EditorProps> = ({
         </div>
 
         {/* Quick Insert Buttons */}
-        <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 max-w-full flex-none">
+        <div className="flex items-center gap-1.5 overflow-x-auto py-1 max-w-full flex-none touch-pan-x scrollbar-none">
           {mode === 'code' ? (
             <>
               <button
                 onClick={() => handleInsertSnippet('slide "New Slide"')}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700/80 rounded-md border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer shadow-2xs"
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700/80 rounded-md border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer shadow-2xs flex-none"
                 title="Insert a new slide"
               >
                 <Plus className="w-3 h-3 text-indigo-500" />
@@ -775,7 +775,7 @@ export const Editor: React.FC<EditorProps> = ({
               autoCapitalize="off"
               autoComplete="off"
               autoCorrect="off"
-              className="flex-1 resize-none bg-transparent p-3 outline-none text-slate-900 dark:text-slate-100 selection:bg-indigo-100 dark:selection:bg-indigo-950/80 whitespace-pre font-mono overflow-y-auto leading-[21px]"
+              className="flex-1 resize-none bg-transparent p-3 outline-none text-slate-900 dark:text-slate-100 selection:bg-indigo-100 dark:selection:bg-indigo-950/80 whitespace-pre font-mono overflow-y-auto leading-[21px] text-[14px] sm:text-[13px]"
               placeholder={
                 mode === 'code'
                   ? `presentation "My Presentation"\n\nslide "Introduction"\ntext "Start typing your presentation code here..."`

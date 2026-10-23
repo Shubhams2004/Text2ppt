@@ -19,6 +19,13 @@ import { ValidationStatus } from './components/ValidationStatus';
 import { HelpModal } from './components/HelpModal';
 import { Presentation, ThemeId, ValidationIssue } from './models/presentation';
 import {
+  FileDown,
+  FileType,
+  ChevronLeft,
+  ChevronRight,
+  Check,
+} from 'lucide-react';
+import {
   saveProjectLocally,
   loadProjectLocally,
   exportProjectBackup,
@@ -712,7 +719,7 @@ export default function App() {
       />
 
       {/* Main Two-Panel Studio Layout */}
-      <main className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
+      <main className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden pb-14 md:pb-0">
         {/* Left: Code Editor (hidden on mobile if preview tab active) */}
         <section
           aria-label="Presentation Code Editor"
@@ -766,9 +773,115 @@ export default function App() {
             canRedo={canRedo}
             onUndo={handleUndo}
             onRedo={handleRedo}
+            onExport={handleExport}
+            isExporting={isExporting}
           />
         </section>
       </main>
+
+      {/* Mobile Fixed Bottom Action Dock (Thumb-friendly for phone users) */}
+      <nav
+        aria-label="Mobile Bottom Actions"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-3 py-2 flex items-center justify-between gap-2 shadow-2xl"
+      >
+        {/* Tab Switcher */}
+        <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg text-xs flex-none">
+          <button
+            onClick={() => setActiveMobileTab('editor')}
+            className={`px-3 py-1.5 rounded-md font-semibold transition-all cursor-pointer ${
+              activeMobileTab === 'editor'
+                ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400'
+            }`}
+          >
+            Code
+          </button>
+          <button
+            onClick={() => setActiveMobileTab('preview')}
+            className={`px-3 py-1.5 rounded-md font-semibold transition-all cursor-pointer ${
+              activeMobileTab === 'preview'
+                ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400'
+            }`}
+          >
+            Preview ({presentation.slides.length})
+          </button>
+        </div>
+
+        {/* Slide Counter & Arrows when in Preview */}
+        {activeMobileTab === 'preview' && presentation.slides.length > 0 && (
+          <div className="flex items-center gap-1 flex-none">
+            <button
+              onClick={() => setActiveSlideIndex((prev) => Math.max(0, prev - 1))}
+              disabled={clampedSlideIndex <= 0}
+              className="p-1.5 text-slate-600 dark:text-slate-300 disabled:opacity-30 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              title="Previous Slide"
+              aria-label="Previous Slide"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 min-w-[36px] text-center">
+              {clampedSlideIndex + 1}/{presentation.slides.length}
+            </span>
+            <button
+              onClick={() => setActiveSlideIndex((prev) => Math.min(presentation.slides.length - 1, prev + 1))}
+              disabled={clampedSlideIndex >= presentation.slides.length - 1}
+              className="p-1.5 text-slate-600 dark:text-slate-300 disabled:opacity-30 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              title="Next Slide"
+              aria-label="Next Slide"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* 1-Tap Quick Export Buttons */}
+        <div className="flex items-center gap-1.5 flex-none">
+          <button
+            onClick={() => handleExport('pptx')}
+            disabled={isExporting || presentation.slides.length === 0}
+            className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 disabled:opacity-50 ${
+              exportSuccessFormat === 'pptx' || (exportSuccess && lastExportFormat === 'pptx')
+                ? 'bg-emerald-600 text-white'
+                : exportingFormat === 'pptx'
+                ? 'bg-indigo-600 text-white'
+                : 'bg-indigo-600 active:bg-indigo-700 text-white'
+            }`}
+            title="Download PowerPoint presentation (.pptx)"
+          >
+            {exportingFormat === 'pptx' ? (
+              <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : exportSuccessFormat === 'pptx' || (exportSuccess && lastExportFormat === 'pptx') ? (
+              <Check className="w-3.5 h-3.5" />
+            ) : (
+              <FileDown className="w-3.5 h-3.5" />
+            )}
+            <span>PPTX</span>
+          </button>
+
+          <button
+            onClick={() => handleExport('pdf')}
+            disabled={isExporting || presentation.slides.length === 0}
+            className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 disabled:opacity-50 ${
+              exportSuccessFormat === 'pdf' || (exportSuccess && lastExportFormat === 'pdf')
+                ? 'bg-emerald-600 text-white'
+                : exportingFormat === 'pdf'
+                ? 'bg-rose-600 text-white'
+                : 'bg-rose-600 active:bg-rose-700 text-white'
+            }`}
+            title="Download PDF document (.pdf)"
+          >
+            {exportingFormat === 'pdf' ? (
+              <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : exportSuccessFormat === 'pdf' || (exportSuccess && lastExportFormat === 'pdf') ? (
+              <Check className="w-3.5 h-3.5" />
+            ) : (
+              <FileType className="w-3.5 h-3.5" />
+            )}
+            <span>PDF</span>
+          </button>
+        </div>
+      </nav>
 
       {/* Floating Quality Toast Notification */}
       {qualityToast && (
