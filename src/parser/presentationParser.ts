@@ -37,6 +37,23 @@ export interface ExtractedToken {
   data?: string;
   headers?: string;
   rows?: string;
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
+  rot?: number;
+  font?: string;
+  size?: number;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  color?: string;
+  align?: 'left' | 'center' | 'right' | 'justify';
+  lineSpacing?: number;
+  strokeWidth?: number;
+  opacity?: number;
+  fit?: 'contain' | 'cover' | 'fill';
+  title?: string;
   hasQuotes: boolean;
   unclosedQuote: boolean;
   missingQuotes: boolean;
@@ -293,6 +310,169 @@ export function extractKeywordAndArgument(line: string): ExtractedToken | null {
     working = working.replace(rowsMatch[0], '').trim();
   }
 
+  let xVal: number | undefined;
+  const xMatch = working.match(/\bx\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (xMatch) {
+    const parsed = parseFloat(xMatch[1] ?? xMatch[2] ?? xMatch[3]);
+    if (!isNaN(parsed)) xVal = parsed;
+    working = working.replace(xMatch[0], '').trim();
+  }
+
+  let yVal: number | undefined;
+  const yMatch = working.match(/\by\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (yMatch) {
+    const parsed = parseFloat(yMatch[1] ?? yMatch[2] ?? yMatch[3]);
+    if (!isNaN(parsed)) yVal = parsed;
+    working = working.replace(yMatch[0], '').trim();
+  }
+
+  let wVal: number | undefined;
+  const wMatch = working.match(/\bw\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (wMatch) {
+    const parsed = parseFloat(wMatch[1] ?? wMatch[2] ?? wMatch[3]);
+    if (!isNaN(parsed)) wVal = parsed;
+    working = working.replace(wMatch[0], '').trim();
+  }
+
+  let hVal: number | undefined;
+  const hMatch = working.match(/\bh\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (hMatch) {
+    const parsed = parseFloat(hMatch[1] ?? hMatch[2] ?? hMatch[3]);
+    if (!isNaN(parsed)) hVal = parsed;
+    working = working.replace(hMatch[0], '').trim();
+  }
+
+  let rotVal: number | undefined;
+  const rotMatch = working.match(/\b(?:rot|rotation)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (rotMatch) {
+    const parsed = parseFloat(rotMatch[1] ?? rotMatch[2] ?? rotMatch[3]);
+    if (!isNaN(parsed)) rotVal = parsed;
+    working = working.replace(rotMatch[0], '').trim();
+  }
+
+  let fontVal: string | undefined;
+  const fontMatch = working.match(/\b(?:font|fontFamily)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (fontMatch) {
+    fontVal = fontMatch[1] ?? fontMatch[2] ?? fontMatch[3];
+    working = working.replace(fontMatch[0], '').trim();
+  }
+
+  let sizeVal: number | undefined;
+  const sizeMatch = working.match(/\b(?:size|fontSize)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (sizeMatch) {
+    const parsed = parseFloat(sizeMatch[1] ?? sizeMatch[2] ?? sizeMatch[3]);
+    if (!isNaN(parsed)) sizeVal = parsed;
+    working = working.replace(sizeMatch[0], '').trim();
+  }
+
+  let boldVal: boolean | undefined;
+  const boldMatch = working.match(/\bbold\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (boldMatch) {
+    const raw = (boldMatch[1] ?? boldMatch[2] ?? boldMatch[3]).toLowerCase();
+    boldVal = raw === 'true' || raw === '1' || raw === 'yes';
+    working = working.replace(boldMatch[0], '').trim();
+  }
+
+  let italicVal: boolean | undefined;
+  const italicMatch = working.match(/\bitalic\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (italicMatch) {
+    const raw = (italicMatch[1] ?? italicMatch[2] ?? italicMatch[3]).toLowerCase();
+    italicVal = raw === 'true' || raw === '1' || raw === 'yes';
+    working = working.replace(italicMatch[0], '').trim();
+  }
+
+  let underlineVal: boolean | undefined;
+  const underlineMatch = working.match(/\bunderline\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (underlineMatch) {
+    const raw = (underlineMatch[1] ?? underlineMatch[2] ?? underlineMatch[3]).toLowerCase();
+    underlineVal = raw === 'true' || raw === '1' || raw === 'yes';
+    working = working.replace(underlineMatch[0], '').trim();
+  }
+
+  let colorVal: string | undefined;
+  const colorMatch = working.match(/\bcolor\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (colorMatch) {
+    colorVal = colorMatch[1] ?? colorMatch[2] ?? colorMatch[3];
+    working = working.replace(colorMatch[0], '').trim();
+  }
+
+  let alignVal: 'left' | 'center' | 'right' | 'justify' | undefined;
+  const alignMatch = working.match(/\balign\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (alignMatch) {
+    const raw = (alignMatch[1] ?? alignMatch[2] ?? alignMatch[3]).toLowerCase();
+    if (raw === 'left' || raw === 'center' || raw === 'right' || raw === 'justify') {
+      alignVal = raw;
+    }
+    working = working.replace(alignMatch[0], '').trim();
+  }
+
+  let lineSpacingVal: number | undefined;
+  const lineSpacingMatch = working.match(/\blineSpacing\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (lineSpacingMatch) {
+    const parsed = parseFloat(lineSpacingMatch[1] ?? lineSpacingMatch[2] ?? lineSpacingMatch[3]);
+    if (!isNaN(parsed)) lineSpacingVal = parsed;
+    working = working.replace(lineSpacingMatch[0], '').trim();
+  }
+
+  let strokeWidthVal: number | undefined;
+  const strokeWidthMatch = working.match(/\bstrokeWidth\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (strokeWidthMatch) {
+    const parsed = parseFloat(strokeWidthMatch[1] ?? strokeWidthMatch[2] ?? strokeWidthMatch[3]);
+    if (!isNaN(parsed)) strokeWidthVal = parsed;
+    working = working.replace(strokeWidthMatch[0], '').trim();
+  }
+
+  let opacityVal: number | undefined;
+  const opacityMatch = working.match(/\bopacity\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (opacityMatch) {
+    const parsed = parseFloat(opacityMatch[1] ?? opacityMatch[2] ?? opacityMatch[3]);
+    if (!isNaN(parsed)) opacityVal = parsed;
+    working = working.replace(opacityMatch[0], '').trim();
+  }
+
+  let fitVal: 'contain' | 'cover' | 'fill' | undefined;
+  const fitMatch = working.match(/\bfit\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (fitMatch) {
+    const raw = (fitMatch[1] ?? fitMatch[2] ?? fitMatch[3]).toLowerCase();
+    if (raw === 'contain' || raw === 'cover' || raw === 'fill') {
+      fitVal = raw;
+    }
+    working = working.replace(fitMatch[0], '').trim();
+  }
+
+  let titleVal: string | undefined;
+  const titleMatch = working.match(/\btitle\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"']+))/i);
+  if (titleMatch) {
+    titleVal = titleMatch[1] ?? titleMatch[2] ?? titleMatch[3];
+    working = working.replace(titleMatch[0], '').trim();
+  }
+
+  const tokenProps = {
+    link: linkVal,
+    fill: fillVal,
+    stroke: strokeVal,
+    data: dataVal,
+    headers: headersVal,
+    rows: rowsVal,
+    x: xVal,
+    y: yVal,
+    w: wVal,
+    h: hVal,
+    rot: rotVal,
+    font: fontVal,
+    size: sizeVal,
+    bold: boldVal,
+    italic: italicVal,
+    underline: underlineVal,
+    color: colorVal,
+    align: alignVal,
+    lineSpacing: lineSpacingVal,
+    strokeWidth: strokeWidthVal,
+    opacity: opacityVal,
+    fit: fitVal,
+    title: titleVal,
+  };
+
   const firstChar = working[0];
   const lastChar = working[working.length - 1];
 
@@ -302,12 +482,7 @@ export function extractKeywordAndArgument(line: string): ExtractedToken | null {
       rawKeyword,
       keyword,
       argument: working.slice(1, -1),
-      link: linkVal,
-      fill: fillVal,
-      stroke: strokeVal,
-      data: dataVal,
-      headers: headersVal,
-      rows: rowsVal,
+      ...tokenProps,
       hasQuotes: true,
       unclosedQuote: false,
       missingQuotes: false,
@@ -321,12 +496,7 @@ export function extractKeywordAndArgument(line: string): ExtractedToken | null {
       rawKeyword,
       keyword,
       argument: working.slice(1),
-      link: linkVal,
-      fill: fillVal,
-      stroke: strokeVal,
-      data: dataVal,
-      headers: headersVal,
-      rows: rowsVal,
+      ...tokenProps,
       hasQuotes: false,
       unclosedQuote: true,
       missingQuotes: false,
@@ -339,17 +509,40 @@ export function extractKeywordAndArgument(line: string): ExtractedToken | null {
     rawKeyword,
     keyword,
     argument: working,
-    link: linkVal,
-    fill: fillVal,
-    stroke: strokeVal,
-    data: dataVal,
-    headers: headersVal,
-    rows: rowsVal,
+    ...tokenProps,
     hasQuotes: false,
     unclosedQuote: false,
     missingQuotes: true,
     rawLine: line,
   };
+}
+
+/**
+ * Copies extracted visual, typography, and positioning attributes from token onto SlideElement
+ */
+function applyTokenAttributes(el: SlideElement, token: ExtractedToken) {
+  if (token.x !== undefined) el.x = token.x;
+  if (token.y !== undefined) el.y = token.y;
+  if (token.w !== undefined) el.w = token.w;
+  if (token.h !== undefined) el.h = token.h;
+  if (token.rot !== undefined) el.rotation = token.rot;
+  if (token.font) el.fontFamily = token.font;
+  if (token.size !== undefined) el.fontSize = token.size;
+  if (token.bold !== undefined) el.bold = token.bold;
+  if (token.italic !== undefined) el.italic = token.italic;
+  if (token.underline !== undefined) el.underline = token.underline;
+  if (token.color) el.color = token.color;
+  if (token.align) el.align = token.align;
+  if (token.lineSpacing !== undefined) el.lineSpacing = token.lineSpacing;
+  if (token.link) el.link = token.link;
+  if (el.type === 'image' && token.fit) {
+    (el as ImageElement).fit = token.fit;
+  }
+  if (el.type === 'shape') {
+    const s = el as ShapeElement;
+    if (token.strokeWidth !== undefined) s.strokeWidth = token.strokeWidth;
+    if (token.opacity !== undefined) s.opacity = token.opacity;
+  }
 }
 
 /**
@@ -718,6 +911,7 @@ export function parsePresentation(code: string): ParseResult {
             content: argument,
             line: lineNum,
           };
+          applyTokenAttributes(textEl, token);
           currentSlide.elements.push(textEl);
         }
         break;
@@ -762,6 +956,7 @@ export function parsePresentation(code: string): ParseResult {
             content: argument,
             line: lineNum,
           };
+          applyTokenAttributes(bulletEl, token);
           currentSlide.elements.push(bulletEl);
         }
         break;
@@ -788,12 +983,14 @@ export function parsePresentation(code: string): ParseResult {
         }
 
         elementCounter++;
-        currentSlide.elements.push({
+        const subtitleEl: SlideElement = {
           id: `el-${elementCounter}`,
           type: 'subtitle',
           content: argument,
           line: lineNum,
-        });
+        };
+        applyTokenAttributes(subtitleEl, token);
+        currentSlide.elements.push(subtitleEl);
         break;
       }
 
@@ -818,12 +1015,14 @@ export function parsePresentation(code: string): ParseResult {
         }
 
         elementCounter++;
-        currentSlide.elements.push({
+        const quoteEl: SlideElement = {
           id: `el-${elementCounter}`,
           type: 'quote',
           content: argument,
           line: lineNum,
-        });
+        };
+        applyTokenAttributes(quoteEl, token);
+        currentSlide.elements.push(quoteEl);
         break;
       }
 
@@ -882,7 +1081,9 @@ export function parsePresentation(code: string): ParseResult {
             src: trimmedArg,
             url: trimmedArg,
             line: lineNum,
+            fit: token.fit || 'contain',
           };
+          applyTokenAttributes(imageEl, token);
           currentSlide.elements.push(imageEl);
         }
         break;
@@ -935,9 +1136,12 @@ export function parsePresentation(code: string): ParseResult {
           fillHex: token.fill ? token.fill.replace('#', '') : undefined,
           strokeColor: token.stroke,
           strokeHex: token.stroke ? token.stroke.replace('#', '') : undefined,
+          strokeWidth: token.strokeWidth,
+          opacity: token.opacity,
           link: token.link,
           line: lineNum,
         };
+        applyTokenAttributes(shapeEl, token);
         currentSlide.elements.push(shapeEl);
         break;
       }
@@ -1003,6 +1207,7 @@ export function parsePresentation(code: string): ParseResult {
           rows,
           line: lineNum,
         };
+        applyTokenAttributes(tableEl, token);
         currentSlide.elements.push(tableEl);
         break;
       }
@@ -1065,9 +1270,10 @@ export function parsePresentation(code: string): ParseResult {
           content: `${chartType} chart`,
           chartType,
           data: dataItems,
-          title: token.data ? argument : undefined,
+          title: token.data ? argument : (token.title || undefined),
           line: lineNum,
         };
+        applyTokenAttributes(chartEl, token);
         currentSlide.elements.push(chartEl);
         break;
       }

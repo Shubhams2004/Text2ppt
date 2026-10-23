@@ -2,6 +2,7 @@ import pptxgen from 'pptxgenjs';
 import JSZip from 'jszip';
 import {
   ChartElement,
+  ImageElement,
   Presentation,
   ShapeElement,
   Slide,
@@ -504,14 +505,22 @@ function renderSlideWithLayout(
   const textElements = slideData.elements.filter(
     (el) => el.type !== 'image' && el.type !== 'shape' && el.type !== 'table' && el.type !== 'chart'
   );
-  if (!layout.body.isEmpty && textElements.length > 0) {
+
+  const explicitTextElements = textElements.filter(
+    (el) => el.x !== undefined && el.y !== undefined
+  );
+  const flowTextElements = textElements.filter(
+    (el) => el.x === undefined || el.y === undefined
+  );
+
+  if (!layout.body.isEmpty && flowTextElements.length > 0) {
     const context = {
       typography: layout.body.typography,
       theme,
       contentBox: layout.body.bounds,
     };
 
-    const textPropsArray: pptxgen.TextProps[] = textElements.map((element) =>
+    const textPropsArray: pptxgen.TextProps[] = flowTextElements.map((element) =>
       renderSlideElement(element, context)
     );
 
@@ -523,6 +532,64 @@ function renderSlideWithLayout(
       valign: 'top',
     });
   }
+
+  // Render explicitly positioned text elements directly
+  explicitTextElements.forEach((el) => {
+    const x = el.x!;
+    const y = el.y!;
+    const w = el.w ?? 4.0;
+    const h = el.h ?? 1.0;
+    const color = el.color ? el.color.replace('#', '') : theme.bodyHex;
+    const fontFace = el.fontFamily || 'Arial';
+    const fontSize = el.fontSize || layout.body.typography.fontSize;
+    const bold = el.bold !== undefined ? el.bold : el.type === 'subtitle';
+    const italic = el.italic !== undefined ? el.italic : el.type === 'quote';
+    const underline = el.underline ? { style: 'sng' as const } : undefined;
+    const align = (el.align || 'left') as 'left' | 'center' | 'right' | 'justify';
+
+    slide.addText(el.content, {
+      x,
+      y,
+      w,
+      h,
+      rotate: el.rotation,
+      fontFace,
+      fontSize,
+      bold,
+      italic,
+      underline,
+      color,
+      align,
+      lineSpacingMultiple: el.lineSpacing || 1.15,
+      bullet: el.type === 'bullet',
+      hyperlink: el.link ? { url: el.link } : undefined,
+      valign: 'top',
+    });
+  });
+
+  // Render explicitly positioned image elements
+  const explicitImageElements = slideData.elements.filter(
+    (el): el is ImageElement => el.type === 'image' && el.x !== undefined && el.y !== undefined
+  );
+  explicitImageElements.forEach((img) => {
+    try {
+      const src = img.src || img.url || img.content;
+      if (!src) return;
+      const isDataUri = src.startsWith('data:image/');
+      const x = img.x!;
+      const y = img.y!;
+      const w = img.w ?? 4.0;
+      const h = img.h ?? 3.0;
+
+      if (isDataUri) {
+        slide.addImage({ data: src, x, y, w, h, rotate: img.rotation });
+      } else {
+        slide.addImage({ path: src, x, y, w, h, rotate: img.rotation });
+      }
+    } catch (err) {
+      console.warn('Could not add explicit image to PPTX:', err);
+    }
+  });
 
   // 5. Render Native PowerPoint Shapes
   const shapeElements = slideData.elements.filter((el): el is ShapeElement => el.type === 'shape');
@@ -607,12 +674,18 @@ function renderShapeElement(
     (element.strokeColor ? element.strokeColor.replace('#', '') : theme.border.replace('#', ''));
   const strokeWidth = element.strokeWidth !== undefined ? element.strokeWidth : 1;
 
+  const transparency =
+    element.opacity !== undefined
+      ? Math.round((1 - Math.max(0, Math.min(1, element.opacity))) * 100)
+      : undefined;
+
   slide.addShape(shapeType, {
     x,
     y,
     w,
     h,
-    fill: { color: fillHex },
+    rotate: element.rotation,
+    fill: { color: fillHex, transparency },
     line: { color: strokeHex, width: strokeWidth },
     hyperlink: element.link ? { url: element.link } : undefined,
   });

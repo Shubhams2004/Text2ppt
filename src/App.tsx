@@ -10,6 +10,7 @@ import { exportToPptxFile, exportBatchToZipFile } from './renderer/pptxRenderer'
 import { exportToPdfFile } from './renderer/pdfRenderer';
 import { autoPaginatePresentation } from './renderer/layoutSystem';
 import { cleanPresentationText } from './utils/contentQuality';
+import { serializePresentation } from './parser/presentationSerializer';
 import { DEFAULT_CODE, DEFAULT_SIMPLE_TEXT, DEFAULT_BATCH_TEXT } from './examples/samplePresentations';
 import { Header, ExportFormat } from './components/Header';
 import { Editor, InputMode } from './components/Editor';
@@ -17,6 +18,14 @@ import { Preview } from './components/Preview';
 import { ValidationStatus } from './components/ValidationStatus';
 import { HelpModal } from './components/HelpModal';
 import { Presentation, ThemeId, ValidationIssue } from './models/presentation';
+import {
+  saveProjectLocally,
+  loadProjectLocally,
+  exportProjectBackup,
+  parseProjectBackupJson,
+  convertMarkdownToCode,
+  convertCsvToCode,
+} from './utils/projectStorage';
 
 export default function App() {
   const [inputMode, setInputMode] = useState<InputMode>('code');
@@ -63,6 +72,72 @@ export default function App() {
   const currentContent =
     inputMode === 'code' ? code : inputMode === 'simple-text' ? simpleText : batchText;
 
+  // Undo / Redo History Stack
+  const [history, setHistory] = useState<string[]>([DEFAULT_CODE]);
+  const [historyIndex, setHistoryIndex] = useState<number>(0);
+
+  const pushHistory = useCallback((newText: string) => {
+    setHistory((prev) => {
+      const slice = prev.slice(0, historyIndex + 1);
+      if (slice.length > 0 && slice[slice.length - 1] === newText) {
+        return prev;
+      }
+      return [...slice, newText];
+    });
+    setHistoryIndex((prev) => prev + 1);
+  }, [historyIndex]);
+
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex < history.length - 1;
+
+  const handleUndo = useCallback(() => {
+    if (historyIndex > 0) {
+      const targetIdx = historyIndex - 1;
+      const targetContent = history[targetIdx];
+      setHistoryIndex(targetIdx);
+      if (inputMode === 'code') setCode(targetContent);
+      else if (inputMode === 'simple-text') setSimpleText(targetContent);
+      else setBatchText(targetContent);
+    }
+  }, [historyIndex, history, inputMode]);
+
+  const handleRedo = useCallback(() => {
+    if (historyIndex < history.length - 1) {
+      const targetIdx = historyIndex + 1;
+      const targetContent = history[targetIdx];
+      setHistoryIndex(targetIdx);
+      if (inputMode === 'code') setCode(targetContent);
+      else if (inputMode === 'simple-text') setSimpleText(targetContent);
+      else setBatchText(targetContent);
+    }
+  }, [historyIndex, history, inputMode]);
+
+  // Local storage restore and autosave system (IndexedDB + localStorage fallback)
+  useEffect(() => {
+    let isMounted = true;
+    loadProjectLocally().then((saved) => {
+      if (!isMounted || !saved) return;
+      if (saved.code) {
+        setCode(saved.code);
+        if (saved.simpleText) setSimpleText(saved.simpleText);
+        if (saved.batchText) setBatchText(saved.batchText);
+        if (saved.inputMode) setInputMode(saved.inputMode);
+        if (typeof saved.activeSlideIndex === 'number') {
+          setActiveSlideIndex(saved.activeSlideIndex);
+        }
+        setHistory([saved.code]);
+        setHistoryIndex(0);
+      }
+    }).catch(() => {
+      // Ignore storage loading errors
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+
+
   const handleContentChange = useCallback(
     (value: string) => {
       if (inputMode === 'code') {
@@ -72,8 +147,9 @@ export default function App() {
       } else {
         setBatchText(value);
       }
+      pushHistory(value);
     },
-    [inputMode]
+    [inputMode, pushHistory]
   );
 
   const handleModeChange = useCallback(
@@ -151,9 +227,167 @@ export default function App() {
   // Ensure activeSlideIndex stays in bounds
   const clampedSlideIndex = useMemo(() => {
     const total = presentation.slides.length;
-    if (total === 0) return 0;
     return Math.min(Math.max(0, activeSlideIndex), total - 1);
   }, [presentation.slides.length, activeSlideIndex]);
+
+  // Debounced client-side local project autosave (IndexedDB + localStorage fallback)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      saveProjectLocally({
+        version: 1,
+        title: presentation.title,
+        code,
+        simpleText,
+        batchText,
+        inputMode,
+        activeSlideIndex,
+        theme: presentation.theme,
+        timestamp: Date.now(),
+      }).catch((err) => {
+        console.warn('Local autosave error:', err);
+      });
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [code, simpleText, batchText, inputMode, activeSlideIndex, presentation.title, presentation.theme]);
+
+  // Update canonical presentation model from visual editor
+  const handleUpdatePresentation = useCallback(
+    (updatedPresentation: Presentation, commitToHistory: boolean = true) => {
+      let serialized: string;
+      if (inputMode === 'batch') {
+        const updatedItems = batchResult.items.map((it, idx) =>
+          idx === safeBatchIndex ? { ...it, presentation: updatedPresentation } : it
+        );
+        serialized = serializeBatchPresentations(updatedItems);
+        setBatchText(serialized);
+      } else {
+        serialized = serializePresentation(updatedPresentation);
+        setCode(serialized);
+        if (inputMode !== 'code') {
+          setInputMode('code');
+        }
+      }
+
+      if (commitToHistory) {
+        pushHistory(serialized);
+      }
+    },
+    [inputMode, batchResult.items, safeBatchIndex, pushHistory]
+  );
+
+  // Downloadable Project Backup (.code2ppt.json)
+  const handleExportProject = useCallback(() => {
+    exportProjectBackup({
+      version: 1,
+      title: presentation.title,
+      code,
+      simpleText,
+      batchText,
+      inputMode,
+      activeSlideIndex,
+      theme: presentation.theme,
+      timestamp: Date.now(),
+    });
+    setQualityToast('Downloaded project backup (.code2ppt.json)');
+    setTimeout(() => setQualityToast(null), 3500);
+  }, [presentation.title, presentation.theme, code, simpleText, batchText, inputMode, activeSlideIndex]);
+
+  // Open Project File (.json or .code2ppt) client-side
+  const handleImportProjectFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+      const parsed = parseProjectBackupJson(text);
+      if (parsed) {
+        setCode(parsed.code);
+        if (parsed.simpleText) setSimpleText(parsed.simpleText);
+        if (parsed.batchText) setBatchText(parsed.batchText);
+        setInputMode(parsed.inputMode);
+        setActiveSlideIndex(parsed.activeSlideIndex || 0);
+        pushHistory(parsed.code);
+        setQualityToast(`Opened project "${parsed.title || file.name}"`);
+        setTimeout(() => setQualityToast(null), 3500);
+      } else {
+        setQualityToast('Error: Invalid project backup format');
+        setTimeout(() => setQualityToast(null), 3500);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  }, [pushHistory]);
+
+  // Import Markdown (.md) document client-side
+  const handleImportMarkdownFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+      const generatedCode = convertMarkdownToCode(text);
+      setCode(generatedCode);
+      setInputMode('code');
+      setActiveSlideIndex(0);
+      pushHistory(generatedCode);
+      setQualityToast(`Imported markdown slides from "${file.name}"`);
+      setTimeout(() => setQualityToast(null), 3500);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  }, [pushHistory]);
+
+  // Import CSV spreadsheet data client-side
+  const handleImportCsvFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+      const cleanBaseName = file.name.replace(/\.[^/.]+$/, '');
+      const generatedCode = convertCsvToCode(text, cleanBaseName);
+      setCode(generatedCode);
+      setInputMode('code');
+      setActiveSlideIndex(0);
+      pushHistory(generatedCode);
+      setQualityToast(`Imported CSV spreadsheet table from "${file.name}"`);
+      setTimeout(() => setQualityToast(null), 3500);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  }, [pushHistory]);
+
+  // Global undo / redo hotkeys
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target as HTMLElement)?.isContentEditable
+      ) {
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [handleUndo, handleRedo]);
 
   // Handle theme changes from Header UI
   const handleThemeChange = useCallback(
@@ -467,9 +701,17 @@ export default function App() {
         isExportingAllBatch={isExportingAllBatch}
         isDarkMode={isDarkMode}
         onToggleDarkMode={toggleDarkMode}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onExportProject={handleExportProject}
+        onImportProjectFile={handleImportProjectFile}
+        onImportMarkdownFile={handleImportMarkdownFile}
+        onImportCsvFile={handleImportCsvFile}
       />
 
-      {/* Main Two-Panel Layout */}
+      {/* Main Two-Panel Studio Layout */}
       <main className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
         {/* Left: Code Editor (hidden on mobile if preview tab active) */}
         <section
@@ -516,9 +758,14 @@ export default function App() {
             themeId={presentation.theme}
             activeSlideIndex={clampedSlideIndex}
             onSelectSlide={setActiveSlideIndex}
+            onUpdatePresentation={handleUpdatePresentation}
             batchItems={batchResult.items}
             selectedBatchIndex={safeBatchIndex}
             onSelectBatchItem={handleSelectBatchItem}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
           />
         </section>
       </main>

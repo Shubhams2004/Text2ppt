@@ -177,16 +177,35 @@ function renderPdfSlideWithLayout(
   }
 
   // 4. Standard body content
+  // 4. Standard body content
   const nonImageElements = slideData.elements.filter((el) => el.type !== 'image');
-  if (!layout.body.isEmpty && nonImageElements.length > 0) {
+  const explicitElements = nonImageElements.filter((el) => el.x !== undefined && el.y !== undefined);
+  const flowElements = nonImageElements.filter((el) => el.x === undefined || el.y === undefined);
+
+  if (!layout.body.isEmpty && flowElements.length > 0) {
     renderPdfContentFlow(
       doc,
-      nonImageElements,
+      flowElements,
       layout.body.bounds,
       layout.body.typography,
       theme
     );
   }
+
+  // Render explicitly positioned elements directly
+  explicitElements.forEach((el) => {
+    const x = el.x!;
+    const y = el.y!;
+    const w = el.w ?? 4.0;
+    const fontSize = el.fontSize || layout.body.typography.fontSize;
+    doc.setFontSize(fontSize);
+    const fontStyle = el.bold && el.italic ? 'bolditalic' : el.bold ? 'bold' : el.italic ? 'italic' : 'normal';
+    doc.setFont('helvetica', fontStyle);
+    const color = el.color || theme.bodyHex;
+    doc.setTextColor(color.startsWith('#') ? color : `#${color}`);
+    const lines = doc.splitTextToSize(el.content, w);
+    doc.text(lines, x, y + (fontSize / 72) * 0.95);
+  });
 }
 
 /**

@@ -25,7 +25,6 @@ import { ValidationIssue } from '../models/presentation';
 import { isJavaScriptOrPptxCode, convertPptxJsToDsl } from '../parser/jsToDslConverter';
 import { BatchManager } from './BatchManager';
 import { BatchPresentationItem } from '../parser/batchParser';
-import { AiImageModal } from './AiImageModal';
 
 export type InputMode = 'code' | 'simple-text' | 'batch';
 export type ExportFormat = 'pptx' | 'pdf';
@@ -80,7 +79,6 @@ export const Editor: React.FC<EditorProps> = ({
   batchExportProgress = null,
 }) => {
   const [copied, setCopied] = React.useState(false);
-  const [isAiImageModalOpen, setIsAiImageModalOpen] = React.useState(false);
   const [batchSubView, setBatchSubView] = React.useState<'cards' | 'source'>('cards');
   const [isBannerExportMenuOpen, setIsBannerExportMenuOpen] = React.useState(false);
   const [isLayoutMenuOpen, setIsLayoutMenuOpen] = React.useState(false);
@@ -552,18 +550,6 @@ export const Editor: React.FC<EditorProps> = ({
             </>
           )}
 
-          <div className="w-px h-4 bg-slate-300 dark:bg-slate-700 mx-0.5" />
-
-          {/* AI Image Generation Button */}
-          <button
-            onClick={() => setIsAiImageModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/70 hover:bg-indigo-100 dark:hover:bg-indigo-900 border border-indigo-200/80 dark:border-indigo-800 rounded-md transition-all cursor-pointer shadow-2xs hover:shadow-xs group"
-            title="Generate slide background or decorative image with AI"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-indigo-500 group-hover:rotate-12 transition-transform" />
-            <span>AI Image</span>
-          </button>
-
           {/* Content Quality Clean Button */}
           {onCleanContent && (
             <button
@@ -802,13 +788,6 @@ export const Editor: React.FC<EditorProps> = ({
         </div>
       )}
 
-      {/* AI Image Generation Modal */}
-      <AiImageModal
-        isOpen={isAiImageModalOpen}
-        onClose={() => setIsAiImageModalOpen(false)}
-        onInsertImage={handleInsertSnippet}
-        currentMode={mode}
-      />
     </div>
   );
 };

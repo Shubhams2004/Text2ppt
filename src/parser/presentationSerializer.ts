@@ -1,182 +1,185 @@
 import {
-  ChartElement,
-  ImageElement,
   Presentation,
+  Slide,
+  SlideElement,
   ShapeElement,
   TableElement,
+  ChartElement,
+  ImageElement,
 } from '../models/presentation';
 
 /**
- * Serializes a typed Presentation model into clean, deterministic Code2PPT DSL markup
+ * Formats a number with up to 2 decimal places, removing unnecessary trailing zeros.
  */
-export function presentationToDsl(pres: Presentation): string {
+function fmtNum(n: number | undefined): string {
+  if (n === undefined || isNaN(n)) return '';
+  return Number(n.toFixed(2)).toString();
+}
+
+/**
+ * Escapes quotes in string arguments
+ */
+function escapeQuote(s: string): string {
+  return (s || '').replace(/"/g, '\\"');
+}
+
+/**
+ * Formats common spatial and styling attributes for any slide element
+ */
+function formatElementAttributes(el: SlideElement): string {
+  const attrs: string[] = [];
+
+  if (el.x !== undefined) attrs.push(`x=${fmtNum(el.x)}`);
+  if (el.y !== undefined) attrs.push(`y=${fmtNum(el.y)}`);
+  if (el.w !== undefined) attrs.push(`w=${fmtNum(el.w)}`);
+  if (el.h !== undefined) attrs.push(`h=${fmtNum(el.h)}`);
+  if (el.rotation !== undefined && el.rotation !== 0) attrs.push(`rot=${fmtNum(el.rotation)}`);
+
+  if (el.fontFamily) attrs.push(`font="${escapeQuote(el.fontFamily)}"`);
+  if (el.fontSize !== undefined) attrs.push(`size=${fmtNum(el.fontSize)}`);
+  if (el.bold !== undefined) attrs.push(`bold=${el.bold}`);
+  if (el.italic !== undefined) attrs.push(`italic=${el.italic}`);
+  if (el.underline !== undefined) attrs.push(`underline=${el.underline}`);
+  if (el.color) attrs.push(`color="${escapeQuote(el.color)}"`);
+  if (el.align) attrs.push(`align="${el.align}"`);
+  if (el.lineSpacing !== undefined) attrs.push(`lineSpacing=${fmtNum(el.lineSpacing)}`);
+  if (el.link) attrs.push(`link="${escapeQuote(el.link)}"`);
+
+  return attrs.length > 0 ? ' ' + attrs.join(' ') : '';
+}
+
+/**
+ * Serializes a single slide element to DSL markup
+ */
+export function serializeSlideElement(el: SlideElement): string {
+  const commonAttrs = formatElementAttributes(el);
+
+  switch (el.type) {
+    case 'text':
+      return `  text "${escapeQuote(el.content)}"${commonAttrs}`;
+
+    case 'bullet':
+      return `  bullet "${escapeQuote(el.content)}"${commonAttrs}`;
+
+    case 'subtitle':
+      return `  subtitle "${escapeQuote(el.content)}"${commonAttrs}`;
+
+    case 'quote':
+      return `  quote "${escapeQuote(el.content)}"${commonAttrs}`;
+
+    case 'image': {
+      const img = el as ImageElement;
+      const fitAttr = img.fit ? ` fit="${img.fit}"` : '';
+      const srcVal = img.src || img.url || el.content;
+      return `  image "${escapeQuote(srcVal)}"${fitAttr}${commonAttrs}`;
+    }
+
+    case 'shape': {
+      const shape = el as ShapeElement;
+      const shapeAttrs: string[] = [];
+      if (shape.fillColor || shape.fillHex) {
+        shapeAttrs.push(`fill="${escapeQuote(shape.fillColor || '#' + shape.fillHex)}"`);
+      }
+      if (shape.strokeColor || shape.strokeHex) {
+        shapeAttrs.push(`stroke="${escapeQuote(shape.strokeColor || '#' + shape.strokeHex)}"`);
+      }
+      if (shape.strokeWidth !== undefined) {
+        shapeAttrs.push(`strokeWidth=${fmtNum(shape.strokeWidth)}`);
+      }
+      if (shape.opacity !== undefined && shape.opacity < 1) {
+        shapeAttrs.push(`opacity=${fmtNum(shape.opacity)}`);
+      }
+      const extra = shapeAttrs.length > 0 ? ' ' + shapeAttrs.join(' ') : '';
+      return `  shape "${shape.shapeType || el.content || 'rect'}"${extra}${commonAttrs}`;
+    }
+
+    case 'table': {
+      const table = el as TableElement;
+      const headersAttr =
+        table.headers && table.headers.length > 0
+          ? ` headers="${escapeQuote(table.headers.join(','))}"`
+          : '';
+      const rowsAttr =
+        table.rows && table.rows.length > 0
+          ? ` rows="${escapeQuote(table.rows.map((r) => r.join(',')).join('|'))}"`
+          : '';
+      return `  table "${escapeQuote(el.content || 'Table')}"${headersAttr}${rowsAttr}${commonAttrs}`;
+    }
+
+    case 'chart': {
+      const chart = el as ChartElement;
+      const titleAttr = chart.title ? ` title="${escapeQuote(chart.title)}"` : '';
+      const dataAttr =
+        chart.data && chart.data.length > 0
+          ? ` data="${escapeQuote(chart.data.map((d) => `${d.label}:${d.value}`).join(','))}"`
+          : '';
+      return `  chart "${chart.chartType || 'bar'}"${titleAttr}${dataAttr}${commonAttrs}`;
+    }
+
+    default:
+      return `  text "${escapeQuote((el as SlideElement).content || '')}"${commonAttrs}`;
+  }
+}
+
+/**
+ * Serializes a single Slide into Code2PPT DSL lines
+ */
+export function serializeSlide(slide: Slide): string {
   const lines: string[] = [];
-  lines.push(`presentation "${pres.title || 'Untitled Presentation'}"`);
-  lines.push(`theme "${pres.theme || 'modern'}"`);
-  if (pres.transition && pres.transition.style !== 'none') {
-    let trCmd = `transition "${pres.transition.style}"`;
-    if (pres.transition.direction) trCmd += ` dir="${pres.transition.direction}"`;
-    if (pres.transition.speed) trCmd += ` speed="${pres.transition.speed}"`;
-    lines.push(trCmd);
+
+  let slideDecl = `slide "${escapeQuote(slide.title || 'Untitled Slide')}"`;
+  if (slide.layout && slide.layout !== 'title-content') {
+    slideDecl += ` layout="${slide.layout}"`;
   }
-  lines.push('');
+  lines.push(slideDecl);
 
-  for (const slide of pres.slides) {
-    let slideCmd = `slide "${slide.title || 'Untitled Slide'}"`;
-    if (slide.layout && slide.layout !== 'title-content') {
-      slideCmd += ` layout="${slide.layout}"`;
-    }
-    lines.push(slideCmd);
-
-    if (slide.background) {
-      lines.push(`background "${slide.background}"`);
-    }
-
-    if (slide.transition && slide.transition.style !== 'none') {
-      let trCmd = `transition "${slide.transition.style}"`;
-      if (slide.transition.direction) trCmd += ` dir="${slide.transition.direction}"`;
-      if (slide.transition.speed) trCmd += ` speed="${slide.transition.speed}"`;
-      lines.push(trCmd);
-    }
-
-    for (const el of slide.elements) {
-      const linkAttr = el.link ? ` link="${el.link}"` : '';
-
-      switch (el.type) {
-        case 'text':
-          lines.push(`text "${el.content}"${linkAttr}`);
-          break;
-        case 'bullet':
-          lines.push(`bullet "${el.content}"${linkAttr}`);
-          break;
-        case 'subtitle':
-          lines.push(`subtitle "${el.content}"${linkAttr}`);
-          break;
-        case 'quote':
-          lines.push(`quote "${el.content}"${linkAttr}`);
-          break;
-        case 'image':
-          lines.push(`image "${(el as ImageElement).src}"`);
-          break;
-        case 'shape': {
-          const s = el as ShapeElement;
-          let cmd = `shape "${s.shapeType}"`;
-          if (s.fillColor) cmd += ` fill="${s.fillColor}"`;
-          if (s.strokeColor) cmd += ` stroke="${s.strokeColor}"`;
-          cmd += linkAttr;
-          lines.push(cmd);
-          break;
-        }
-        case 'table': {
-          const t = el as TableElement;
-          const headersStr = (t.headers || []).join(', ');
-          const rowsStr = (t.rows || []).map((r) => r.join(', ')).join('; ');
-          lines.push(`table headers="${headersStr}" rows="${rowsStr}"`);
-          break;
-        }
-        case 'chart': {
-          const c = el as ChartElement;
-          const dataStr = (c.data || []).map((d) => `${d.label}:${d.value}`).join(', ');
-          lines.push(`chart "${c.chartType}" data="${dataStr}"`);
-          break;
-        }
-      }
-    }
-
-    if (slide.notes) {
-      lines.push(`notes "${slide.notes}"`);
-    }
-
-    lines.push('');
+  if (slide.transition && slide.transition.style !== 'none') {
+    let trans = `  transition "${slide.transition.style}"`;
+    if (slide.transition.direction) trans += ` dir="${slide.transition.direction}"`;
+    if (slide.transition.speed) trans += ` speed="${slide.transition.speed}"`;
+    if (slide.transition.duration) trans += ` duration=${slide.transition.duration}`;
+    lines.push(trans);
   }
 
-  return lines.join('\n').trim();
+  if (slide.background) {
+    lines.push(`  background "${escapeQuote(slide.background)}"`);
+  }
+
+  if (slide.notes) {
+    lines.push(`  notes "${escapeQuote(slide.notes)}"`);
+  }
+
+  for (const el of slide.elements) {
+    lines.push(serializeSlideElement(el));
+  }
+
+  return lines.join('\n');
 }
 
 /**
- * Project file format schema
+ * Serializes a complete Presentation model into Code2PPT DSL code.
  */
-export interface StudioProjectData {
-  version: number;
-  appName: string;
-  title: string;
-  theme: string;
-  inputMode: 'code' | 'simple-text' | 'batch';
-  code: string;
-  savedAt: string;
-}
+export function serializePresentation(presentation: Presentation): string {
+  const parts: string[] = [];
 
-/**
- * Downloads the current project as a JSON backup file
- */
-export function exportProjectToJson(
-  title: string,
-  theme: string,
-  inputMode: 'code' | 'simple-text' | 'batch',
-  code: string
-): void {
-  const projectData: StudioProjectData = {
-    version: 1,
-    appName: 'Code2PPT STUDIO',
-    title: title || 'Untitled Presentation',
-    theme: theme || 'modern',
-    inputMode,
-    code,
-    savedAt: new Date().toISOString(),
-  };
+  // Presentation header
+  parts.push(`presentation "${escapeQuote(presentation.title || 'Untitled Presentation')}"`);
+  parts.push(`theme "${presentation.theme || 'modern'}"`);
 
-  const jsonString = JSON.stringify(projectData, null, 2);
-  const blob = new Blob([jsonString], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  const safeName = (title || 'presentation').trim().replace(/[/\\?%*:|"<>]/g, '_');
-  a.download = `${safeName}.code2ppt.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
+  if (presentation.transition && presentation.transition.style !== 'none') {
+    let trans = `transition "${presentation.transition.style}"`;
+    if (presentation.transition.direction) trans += ` dir="${presentation.transition.direction}"`;
+    if (presentation.transition.speed) trans += ` speed="${presentation.transition.speed}"`;
+    parts.push(trans);
+  }
 
-/**
- * Imports a CSV string into a presentation table slide
- */
-export function convertCsvToPresentation(csvContent: string, fileName?: string): string {
-  const lines = csvContent.trim().split(/\r?\n/).filter((l) => l.trim().length > 0);
-  if (lines.length === 0) return '';
+  parts.push(''); // blank line
 
-  const deckTitle = fileName ? fileName.replace(/\.[^/.]+$/, '') : 'Data Table';
-  const parsedRows = lines.map((line) => {
-    // Simple CSV parser handling quotes or commas
-    const cells: string[] = [];
-    let cur = '';
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const c = line[i];
-      if (c === '"') {
-        inQuotes = !inQuotes;
-      } else if (c === ',' && !inQuotes) {
-        cells.push(cur.trim());
-        cur = '';
-      } else {
-        cur += c;
-      }
-    }
-    cells.push(cur.trim());
-    return cells;
-  });
+  // Slides
+  for (const slide of presentation.slides) {
+    parts.push(serializeSlide(slide));
+    parts.push(''); // blank line between slides
+  }
 
-  const headers = parsedRows[0] || [];
-  const rows = parsedRows.slice(1);
-
-  const dslLines = [
-    `presentation "${deckTitle}"`,
-    `theme "ocean"`,
-    '',
-    `slide "${deckTitle}" layout="title-content"`,
-    `subtitle "Imported from CSV (${lines.length} rows)"`,
-    `table headers="${headers.join(', ')}" rows="${rows.slice(0, 15).map((r) => r.join(', ')).join('; ')}"`,
-  ];
-
-  return dslLines.join('\n');
+  return parts.join('\n').trim() + '\n';
 }

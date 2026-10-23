@@ -38,6 +38,15 @@ export interface BaseSlideElement {
   y?: number;
   w?: number;
   h?: number;
+  rotation?: number;
+  fontFamily?: string;
+  fontSize?: number;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  color?: string;
+  align?: 'left' | 'center' | 'right' | 'justify';
+  lineSpacing?: number;
 }
 
 /**

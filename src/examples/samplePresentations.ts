@@ -85,6 +85,50 @@ bullet "Instant live preview updates while typing"
 bullet "Native Microsoft PowerPoint compatibility (.pptx)"
 bullet "Deployable statically to GitHub Pages"`,
   },
+  {
+    id: 'kpi-dashboard',
+    name: 'Executive KPI Dashboard',
+    description: 'Quarterly financial metrics, customer retention, and payback cycles',
+    code: `presentation "Executive KPI & Growth Metrics"
+theme "emerald"
+
+slide "Executive Performance" layout="two-column"
+text "Financial & Retention Benchmarks" bold=true size=18
+bullet "Annual Recurring Revenue: $24.8M (+48% YoY)"
+bullet "Net Revenue Retention: 124% across enterprise tier"
+bullet "Customer Acquisition Cost payback within 7 months"
+bullet "Gross Margin expanded from 72% to 79%"`,
+  },
+  {
+    id: 'comparison-matrix',
+    name: 'Architecture Comparison',
+    description: 'Side-by-side legacy vs modernized microservices comparison',
+    code: `presentation "Architecture Modernization"
+theme "ocean"
+
+slide "Architecture Comparison" layout="two-column"
+text "Legacy Architecture Constraints:" bold=true
+bullet "Single point of failure"
+bullet "Deployment bottlenecks and database coupling"
+text "Modern Event-Driven Microservices:" bold=true
+bullet "Scale-to-zero serverless functions"
+bullet "Sub-second startup with strict type guarantees"`,
+  },
+  {
+    id: 'roadmap-timeline',
+    name: 'Strategic 3-Phase Roadmap',
+    description: 'Quarterly phase milestones, validation gates, and delivery targets',
+    code: `presentation "Strategic Delivery Roadmap"
+theme "modern"
+
+slide "Execution Roadmap" layout="title-content"
+text "Phase 1: Foundation & Baseline Validation" bold=true
+bullet "Establish automated test harness and CI/CD verification"
+text "Phase 2: Core Feature Rollout" bold=true
+bullet "Deploy visual slide editor, filmstrip, and PPTX renderer"
+text "Phase 3: Scale & Optimization" bold=true
+bullet "Zero-dependency static bundling for GitHub Pages hosting"`,
+  },
 ];
 
 export const DEFAULT_CODE = SAMPLE_PRESENTATIONS[0].code;

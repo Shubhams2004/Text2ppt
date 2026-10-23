@@ -152,7 +152,15 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Center: Mobile Tabs Switcher */}
+        {/* Center: Device Storage Status on desktop */}
+        <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100/90 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 text-xs font-medium text-slate-600 dark:text-slate-300 flex-none">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse flex-none" />
+          <span className="font-semibold text-slate-700 dark:text-slate-200">Local Browser Storage</span>
+          <span className="text-slate-400 dark:text-slate-500">•</span>
+          <span className="text-[11px] text-slate-500 dark:text-slate-400">Zero Cloud Upload</span>
+        </div>
+
+        {/* Mobile Tabs Switcher */}
         <div className="flex md:hidden items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg text-xs font-medium flex-none">
           <button
             onClick={() => onMobileTabChange('editor')}
