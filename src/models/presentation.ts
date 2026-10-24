@@ -271,7 +271,10 @@ export type IssueCode =
   | 'UNCLOSED_QUOTE'
   | 'MISSING_ARGUMENT'
   | 'UNKNOWN_THEME'
-  | 'JAVASCRIPT_DETECTED';
+  | 'JAVASCRIPT_DETECTED'
+  | 'LOW_CONTRAST'
+  | 'SPATIAL_OVERLAP'
+  | 'BROKEN_IMAGE';
 
 export interface ValidationIssue {
   line: number;

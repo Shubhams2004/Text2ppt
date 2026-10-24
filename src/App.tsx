@@ -10,6 +10,7 @@ import { exportToPptxFile, exportBatchToZipFile } from './renderer/pptxRenderer'
 import { exportToPdfFile } from './renderer/pdfRenderer';
 import { autoPaginatePresentation } from './renderer/layoutSystem';
 import { cleanPresentationText } from './utils/contentQuality';
+import { validatePresentationQuality } from './utils/qualityValidators';
 import { serializePresentation } from './parser/presentationSerializer';
 import { DEFAULT_CODE, DEFAULT_SIMPLE_TEXT, DEFAULT_BATCH_TEXT } from './examples/samplePresentations';
 import { Header, ExportFormat } from './components/Header';
@@ -212,9 +213,11 @@ export default function App() {
         };
       }
       const activeItem = batchResult.items[safeBatchIndex];
+      const paginated = autoPaginatePresentation(activeItem.presentation);
+      const qualityIssues = validatePresentationQuality(paginated);
       return {
-        presentation: autoPaginatePresentation(activeItem.presentation),
-        issues: [...batchResult.issues, ...activeItem.issues],
+        presentation: paginated,
+        issues: [...batchResult.issues, ...activeItem.issues, ...qualityIssues],
         hasErrors: activeItem.hasErrors || batchResult.hasErrors,
       };
     }
@@ -223,9 +226,13 @@ export default function App() {
         ? parseSimpleText(simpleText)
         : parsePresentation(code);
 
+    const paginated = autoPaginatePresentation(rawResult.presentation);
+    const qualityIssues = validatePresentationQuality(paginated);
+
     return {
       ...rawResult,
-      presentation: autoPaginatePresentation(rawResult.presentation),
+      presentation: paginated,
+      issues: [...rawResult.issues, ...qualityIssues],
     };
   }, [inputMode, isMultiInCurrent, code, simpleText, batchResult, safeBatchIndex]);
 
