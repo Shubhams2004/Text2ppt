@@ -38,6 +38,9 @@ import {
   ChevronDown,
   FileDown,
   FileType,
+  Edit3,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import {
   ChartElement,
@@ -328,6 +331,9 @@ export const Preview: React.FC<PreviewProps> = ({
   const [gridSize] = useState(0.1); // 0.1 inch grid step
   const [activeGuides, setActiveGuides] = useState<{ v?: number; h?: number }>({});
   const [isShapeMenuOpen, setIsShapeMenuOpen] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState<number>(100);
+  const [showFilmstrip, setShowFilmstrip] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 768);
+  const [isMobilePropertiesOpen, setIsMobilePropertiesOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const theme = THEMES[themeId] || THEMES.modern;
@@ -823,6 +829,35 @@ export const Preview: React.FC<PreviewProps> = ({
           >
             <ChevronRight className="w-4 h-4" />
           </button>
+
+          {/* Canvas Zoom Controls */}
+          <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded-md text-xs border border-slate-200 dark:border-slate-700 ml-1">
+            <button
+              onClick={() => setZoomLevel((z) => Math.max(50, z - 15))}
+              disabled={zoomLevel <= 50}
+              className="p-0.5 text-slate-600 dark:text-slate-400 hover:text-indigo-600 disabled:opacity-30 rounded cursor-pointer"
+              title="Zoom Out"
+              aria-label="Zoom Out"
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setZoomLevel(100)}
+              className="px-1 py-0.2 text-[10px] font-semibold text-slate-700 dark:text-slate-300 hover:text-indigo-600 cursor-pointer"
+              title="Reset Zoom to 100%"
+            >
+              {zoomLevel}%
+            </button>
+            <button
+              onClick={() => setZoomLevel((z) => Math.min(200, z + 15))}
+              disabled={zoomLevel >= 200}
+              className="p-0.5 text-slate-600 dark:text-slate-400 hover:text-indigo-600 disabled:opacity-30 rounded cursor-pointer"
+              title="Zoom In"
+              aria-label="Zoom In"
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
         {/* Multi-Deck Selector if multiple presentations present */}
@@ -930,12 +965,22 @@ export const Preview: React.FC<PreviewProps> = ({
 
       {/* Visual Studio Editing Context Toolbar */}
       {isVisualEditing && currentSlide && (
-        <div className="flex-none px-4 py-1.5 bg-indigo-50/90 dark:bg-slate-900 border-b border-indigo-200 dark:border-slate-800 flex items-center justify-between gap-3 text-xs flex-wrap animate-in fade-in duration-150">
+        <div className="flex-none px-3 py-1.5 bg-indigo-50/90 dark:bg-slate-900 border-b border-indigo-200 dark:border-slate-800 flex items-center justify-between gap-2 text-xs overflow-x-auto touch-pan-x scrollbar-none animate-in fade-in duration-150">
           {/* Left: Insert Elements & Snapping */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-bold text-slate-500 dark:text-slate-400 text-[10px] uppercase tracking-wider mr-1">
+          <div className="flex items-center gap-1.5 flex-none">
+            <span className="font-bold text-slate-500 dark:text-slate-400 text-[10px] uppercase tracking-wider mr-0.5 hidden sm:inline">
               Insert:
             </span>
+
+            {/* Mobile Format / Slide Settings button */}
+            <button
+              onClick={() => setIsMobilePropertiesOpen(true)}
+              className="md:hidden inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-600 text-white rounded-md shadow-2xs font-semibold cursor-pointer"
+              title="Open formatting properties panel"
+            >
+              <Sliders className="w-3 h-3 text-white" />
+              <span>{selectedElement ? 'Format' : 'Slide Settings'}</span>
+            </button>
 
             <button
               onClick={() => handleAddElement('text')}
@@ -1048,7 +1093,7 @@ export const Preview: React.FC<PreviewProps> = ({
           </div>
 
           {/* Right: Slide Deck Operations */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-none">
             <button
               onClick={handleAddSlide}
               className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md font-semibold text-xs shadow-2xs cursor-pointer"
@@ -1152,7 +1197,12 @@ export const Preview: React.FC<PreviewProps> = ({
                 className={`w-full relative aspect-[16/9] rounded-2xl overflow-hidden shadow-2xl shadow-slate-900/15 dark:shadow-black/50 ring-1 ring-slate-900/10 dark:ring-white/10 transition-all ${
                   isVisualEditing ? 'ring-2 ring-indigo-500/60' : ''
                 }`}
-                style={{ backgroundColor: currentSlide?.background || theme.bgColor }}
+                style={{
+                  backgroundColor: currentSlide?.background || theme.bgColor,
+                  transform: zoomLevel !== 100 ? `scale(${zoomLevel / 100})` : undefined,
+                  transformOrigin: 'top center',
+                  transition: 'transform 0.15s ease-out',
+                }}
               >
                 <AnimatePresence mode="popLayout" custom={navDirection} initial={false}>
                   {currentSlide && (
@@ -1189,6 +1239,9 @@ export const Preview: React.FC<PreviewProps> = ({
                         onStartInlineEdit={(id) => setInlineEditingId(id)}
                         onEndInlineEdit={() => setInlineEditingId(null)}
                         onUpdateElement={handleUpdateElement}
+                        onOpenMobileProperties={() => setIsMobilePropertiesOpen(true)}
+                        onDuplicateElement={handleDuplicateElement}
+                        onDeleteElement={handleDeleteElement}
                         setGuides={setActiveGuides}
                       />
                     </motion.div>
@@ -1211,82 +1264,100 @@ export const Preview: React.FC<PreviewProps> = ({
                 </div>
               )}
 
-              {/* Interactive Filmstrip */}
+              {/* Interactive Collapsible Filmstrip */}
               {totalSlides > 1 && !isFullscreen && (
-                <div className="flex items-center gap-1.5 mt-4 overflow-x-auto max-w-full px-2 py-1.5 scrollbar-thin">
-                  {slides.map((s, idx) => (
-                    <div
-                      key={s.id || idx}
-                      className={`group relative rounded-xl transition-all flex items-center p-0.5 border ${
-                        idx === activeSlideIndex
-                          ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/60'
-                          : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90'
-                      }`}
+                <div className="w-full max-w-4xl mt-3 flex flex-col items-center">
+                  <div className="w-full flex items-center justify-between px-1 mb-1">
+                    <button
+                      onClick={() => setShowFilmstrip(!showFilmstrip)}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors cursor-pointer"
                     >
-                      <button
-                        onClick={() => {
-                          onSelectSlide(idx);
-                          setSelectedElementId(null);
-                        }}
-                        className="px-2.5 py-1 text-xs font-medium flex items-center gap-1.5 cursor-pointer"
-                        title={`Jump to slide ${idx + 1}: ${s.title}`}
-                      >
-                        <span
-                          className={`w-4 h-4 rounded-md text-[10px] font-bold flex items-center justify-center ${
+                      <span>Filmstrip ({totalSlides} slides)</span>
+                      <ChevronDown
+                        className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                          showFilmstrip ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {showFilmstrip && (
+                    <div className="w-full flex items-center gap-1.5 overflow-x-auto max-w-full px-2 py-1.5 scrollbar-thin animate-in fade-in duration-150">
+                      {slides.map((s, idx) => (
+                        <div
+                          key={s.id || idx}
+                          className={`group relative rounded-xl transition-all flex items-center p-0.5 border flex-none ${
                             idx === activeSlideIndex
-                              ? 'bg-indigo-600 text-white'
-                              : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                              ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/60'
+                              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90'
                           }`}
                         >
-                          {idx + 1}
-                        </span>
-                        <span className="truncate max-w-[100px] sm:max-w-[130px] text-slate-700 dark:text-slate-300 font-medium">
-                          {s.title || `Slide ${idx + 1}`}
-                        </span>
-                      </button>
+                          <button
+                            onClick={() => {
+                              onSelectSlide(idx);
+                              setSelectedElementId(null);
+                            }}
+                            className="px-2.5 py-1 text-xs font-medium flex items-center gap-1.5 cursor-pointer"
+                            title={`Jump to slide ${idx + 1}: ${s.title}`}
+                          >
+                            <span
+                              className={`w-4 h-4 rounded-md text-[10px] font-bold flex items-center justify-center ${
+                                idx === activeSlideIndex
+                                  ? 'bg-indigo-600 text-white'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                              }`}
+                            >
+                              {idx + 1}
+                            </span>
+                            <span className="truncate max-w-[100px] sm:max-w-[130px] text-slate-700 dark:text-slate-300 font-medium">
+                              {s.title || `Slide ${idx + 1}`}
+                            </span>
+                          </button>
 
-                      {/* Filmstrip Reorder controls */}
-                      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center pr-1 gap-0.5">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (idx > 0) {
-                              onSelectSlide(idx);
-                              handleMoveSlide('left');
-                            }
-                          }}
-                          disabled={idx <= 0}
-                          className="p-0.5 hover:text-indigo-600 disabled:opacity-20 text-slate-400"
-                          title="Move Left"
-                        >
-                          <ChevronLeft className="w-3 h-3" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (idx < totalSlides - 1) {
-                              onSelectSlide(idx);
-                              handleMoveSlide('right');
-                            }
-                          }}
-                          disabled={idx >= totalSlides - 1}
-                          className="p-0.5 hover:text-indigo-600 disabled:opacity-20 text-slate-400"
-                          title="Move Right"
-                        >
-                          <ChevronRight className="w-3 h-3" />
-                        </button>
-                      </div>
+                          {/* Filmstrip Reorder controls */}
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center pr-1 gap-0.5">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (idx > 0) {
+                                  onSelectSlide(idx);
+                                  handleMoveSlide('left');
+                                }
+                              }}
+                              disabled={idx <= 0}
+                              className="p-0.5 hover:text-indigo-600 disabled:opacity-20 text-slate-400"
+                              title="Move Left"
+                            >
+                              <ChevronLeft className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (idx < totalSlides - 1) {
+                                  onSelectSlide(idx);
+                                  handleMoveSlide('right');
+                                }
+                              }}
+                              disabled={idx >= totalSlides - 1}
+                              className="p-0.5 hover:text-indigo-600 disabled:opacity-20 text-slate-400"
+                              title="Move Right"
+                            >
+                              <ChevronRight className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
               )}
             </div>
           )}
         </div>
 
-        {/* Right Side: Contextual Properties Panel or Slide Settings */}
+        {/* Desktop Sidebar: Contextual Properties Panel or Slide Settings */}
         {isVisualEditing && currentSlide && (
-          <div className="w-72 sm:w-80 border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex-none overflow-y-auto p-3 scrollbar-thin">
+          <aside className="hidden md:block w-72 lg:w-80 border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex-none overflow-y-auto p-3 scrollbar-thin">
             {selectedElement ? (
               <VisualPropertiesPanel
                 element={selectedElement}
@@ -1299,7 +1370,6 @@ export const Preview: React.FC<PreviewProps> = ({
                 onClose={() => setSelectedElementId(null)}
               />
             ) : (
-              // Slide Settings Panel when no element is selected
               <div className="space-y-4 text-xs select-none animate-in fade-in duration-100">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
                   <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[11px] text-slate-700 dark:text-slate-300">
@@ -1428,9 +1498,155 @@ export const Preview: React.FC<PreviewProps> = ({
                 </div>
               </div>
             )}
-          </div>
+          </aside>
         )}
       </div>
+
+      {/* Mobile Bottom Sheet Drawer for Element Properties / Slide Settings */}
+      {isVisualEditing && currentSlide && isMobilePropertiesOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end animate-in fade-in duration-150">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-xs"
+            onClick={() => setIsMobilePropertiesOpen(false)}
+          />
+          <div className="relative bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 rounded-t-2xl max-h-[80dvh] flex flex-col shadow-2xl overflow-hidden z-10 pb-safe">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60">
+              <div className="flex items-center gap-2 font-bold text-xs text-slate-800 dark:text-slate-200">
+                <Sliders className="w-4 h-4 text-indigo-500" />
+                <span>{selectedElement ? 'Element Properties' : `Slide ${activeSlideIndex + 1} Settings`}</span>
+              </div>
+              <button
+                onClick={() => setIsMobilePropertiesOpen(false)}
+                className="p-1.5 rounded-full text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 scrollbar-thin">
+              {selectedElement ? (
+                <VisualPropertiesPanel
+                  element={selectedElement}
+                  theme={theme}
+                  onUpdateElement={handleUpdateElement}
+                  onDeleteElement={handleDeleteElement}
+                  onDuplicateElement={handleDuplicateElement}
+                  onLayerChange={handleLayerChange}
+                  onAlignElement={handleAlignElement}
+                  onClose={() => {
+                    setIsMobilePropertiesOpen(false);
+                    setSelectedElementId(null);
+                  }}
+                />
+              ) : (
+                <div className="space-y-4 text-xs select-none">
+                  {/* Slide Title */}
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                      Slide Title
+                    </label>
+                    <input
+                      type="text"
+                      value={currentSlide.title}
+                      onChange={(e) => {
+                        if (!onUpdatePresentation) return;
+                        const updated = { ...currentSlide, title: e.target.value };
+                        const newSlides = slides.map((s, i) => (i === activeSlideIndex ? updated : s));
+                        onUpdatePresentation({ ...presentation, slides: newSlides }, false);
+                      }}
+                      onBlur={() => {
+                        if (!onUpdatePresentation) return;
+                        onUpdatePresentation({ ...presentation }, true);
+                      }}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold text-xs focus:ring-1 focus:ring-indigo-500 outline-none"
+                      placeholder="Enter slide title..."
+                    />
+                  </div>
+
+                  {/* Slide Layout */}
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                      Layout
+                    </label>
+                    <select
+                      value={currentSlide.layout || 'title-content'}
+                      onChange={(e) => {
+                        if (!onUpdatePresentation) return;
+                        const updated = { ...currentSlide, layout: e.target.value as SlideLayout };
+                        const newSlides = slides.map((s, i) => (i === activeSlideIndex ? updated : s));
+                        onUpdatePresentation({ ...presentation, slides: newSlides }, true);
+                      }}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-medium text-xs focus:outline-none cursor-pointer capitalize"
+                    >
+                      {(['title-content', 'two-column', 'text-image', 'image-text', 'full-image', 'blank'] as const).map(
+                        (l) => (
+                          <option key={l} value={l}>
+                            {l.replace('-', ' ')}
+                          </option>
+                        )
+                      )}
+                    </select>
+                  </div>
+
+                  {/* Background color */}
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                      Background Color
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={currentSlide.background || theme.bgColor}
+                        onChange={(e) => {
+                          if (!onUpdatePresentation) return;
+                          const updated = { ...currentSlide, background: e.target.value };
+                          const newSlides = slides.map((s, i) => (i === activeSlideIndex ? updated : s));
+                          onUpdatePresentation({ ...presentation, slides: newSlides }, true);
+                        }}
+                        className="w-7 h-7 rounded-lg border-none cursor-pointer p-0 bg-transparent flex-none"
+                      />
+                      <button
+                        onClick={() => {
+                          if (!onUpdatePresentation) return;
+                          const updated = { ...currentSlide, background: undefined };
+                          const newSlides = slides.map((s, i) => (i === activeSlideIndex ? updated : s));
+                          onUpdatePresentation({ ...presentation, slides: newSlides }, true);
+                        }}
+                        className="px-2 py-1 text-[11px] bg-slate-100 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
+                      >
+                        Reset to Theme
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Speaker Notes */}
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+                      Speaker Notes
+                    </label>
+                    <textarea
+                      value={currentSlide.notes || ''}
+                      onChange={(e) => {
+                        if (!onUpdatePresentation) return;
+                        const updated = { ...currentSlide, notes: e.target.value };
+                        const newSlides = slides.map((s, i) => (i === activeSlideIndex ? updated : s));
+                        onUpdatePresentation({ ...presentation, slides: newSlides }, false);
+                      }}
+                      onBlur={() => {
+                        if (!onUpdatePresentation) return;
+                        onUpdatePresentation({ ...presentation }, true);
+                      }}
+                      rows={3}
+                      placeholder="Enter presenter remarks..."
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs focus:ring-1 focus:ring-indigo-500 outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Fullscreen Floating Presentation HUD */}
       {isFullscreen && (
@@ -1485,6 +1701,9 @@ interface SlideCanvasProps {
   onStartInlineEdit?: (id: string) => void;
   onEndInlineEdit?: () => void;
   onUpdateElement?: (updated: SlideElement, commitToHistory?: boolean) => void;
+  onOpenMobileProperties?: () => void;
+  onDuplicateElement?: (id: string) => void;
+  onDeleteElement?: (id: string) => void;
   setGuides?: (guides: { v?: number; h?: number }) => void;
 }
 
@@ -1505,6 +1724,9 @@ const SlideCanvas: React.FC<SlideCanvasProps> = ({
   onStartInlineEdit,
   onEndInlineEdit,
   onUpdateElement,
+  onOpenMobileProperties,
+  onDuplicateElement,
+  onDeleteElement,
   setGuides,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1699,6 +1921,9 @@ const SlideCanvas: React.FC<SlideCanvasProps> = ({
           onStartInlineEdit={(id) => onStartInlineEdit?.(id)}
           onEndInlineEdit={() => onEndInlineEdit?.()}
           onUpdateElement={(updated, commit) => onUpdateElement?.(updated, commit)}
+          onOpenMobileProperties={onOpenMobileProperties}
+          onDuplicate={onDuplicateElement}
+          onDelete={onDeleteElement}
           setGuides={setGuides || (() => {})}
         />
       ))}
@@ -1726,6 +1951,9 @@ interface InteractiveElementItemProps {
   onStartInlineEdit: (id: string) => void;
   onEndInlineEdit: () => void;
   onUpdateElement: (updated: SlideElement, commitToHistory?: boolean) => void;
+  onOpenMobileProperties?: () => void;
+  onDuplicate?: (id: string) => void;
+  onDelete?: (id: string) => void;
   setGuides: (guides: { v?: number; h?: number }) => void;
 }
 
@@ -1746,6 +1974,9 @@ const InteractiveElementItem: React.FC<InteractiveElementItemProps> = ({
   onStartInlineEdit,
   onEndInlineEdit,
   onUpdateElement,
+  onOpenMobileProperties,
+  onDuplicate,
+  onDelete,
   setGuides,
 }) => {
   const geom = getElementGeometry(element, layout, index);
@@ -1976,8 +2207,9 @@ const InteractiveElementItem: React.FC<InteractiveElementItemProps> = ({
         transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
         transformOrigin: 'center center',
         zIndex: isSelected ? 35 : index + 10,
+        touchAction: 'none',
       }}
-      className={`group cursor-move transition-shadow ${
+      className={`group cursor-move transition-shadow touch-none select-none ${
         isSelected
           ? 'ring-2 ring-indigo-500 ring-offset-1 shadow-md'
           : 'hover:ring-1 hover:ring-indigo-300/80'
@@ -2215,25 +2447,87 @@ const InteractiveElementItem: React.FC<InteractiveElementItemProps> = ({
         )}
       </div>
 
-      {/* Selection outline, rotation handle and 8 resize handles */}
+      {/* Selection outline, rotation handle, floating action pill and 8 resize handles */}
       {isSelected && (
         <>
-          {/* Top Rotation Knob */}
+          {/* Mobile-Friendly Floating Quick Actions Pill */}
+          <div
+            onPointerDown={(e) => e.stopPropagation()}
+            className="absolute -top-11 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-slate-900/95 text-white rounded-full px-2 py-1 shadow-xl backdrop-blur-md text-[11px] whitespace-nowrap z-50 pointer-events-auto border border-slate-700/80"
+          >
+            {(element.type === 'text' ||
+              element.type === 'bullet' ||
+              element.type === 'subtitle' ||
+              element.type === 'quote') && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStartInlineEdit(element.id);
+                }}
+                className="px-2 py-0.5 hover:bg-slate-800 rounded-full font-medium flex items-center gap-1 text-slate-200 hover:text-white cursor-pointer"
+                title="Edit Text"
+              >
+                <Edit3 className="w-3 h-3 text-indigo-400" />
+                <span>Edit</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenMobileProperties?.();
+              }}
+              className="px-2 py-0.5 hover:bg-slate-800 rounded-full font-medium flex items-center gap-1 text-slate-200 hover:text-white cursor-pointer"
+              title="Open Style & Properties"
+            >
+              <Sliders className="w-3 h-3 text-amber-400" />
+              <span>Format</span>
+            </button>
+            {onDuplicate && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDuplicate(element.id);
+                }}
+                className="p-1 hover:bg-slate-800 rounded-full text-slate-300 hover:text-white cursor-pointer"
+                title="Duplicate"
+              >
+                <Copy className="w-3 h-3" />
+              </button>
+            )}
+            {onDelete && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(element.id);
+                }}
+                className="p-1 hover:bg-rose-600 rounded-full text-rose-300 hover:text-white cursor-pointer"
+                title="Delete"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+
+          {/* Top Rotation Knob with expanded touch target */}
           <div
             onPointerDown={handlePointerDownRotate}
-            className="absolute -top-6 left-1/2 -translate-x-1/2 flex flex-col items-center cursor-grab active:cursor-grabbing group/rot z-40"
+            className="absolute -top-7 left-1/2 -translate-x-1/2 flex flex-col items-center cursor-grab active:cursor-grabbing group/rot z-40 touch-none before:absolute before:-inset-3 before:content-[''] before:touch-none"
             title="Drag to Rotate element (Hold Shift for 15° snap)"
           >
-            <div className="w-3 h-3 rounded-full bg-white dark:bg-slate-800 border-2 border-indigo-600 shadow-sm flex items-center justify-center hover:scale-125 transition-transform" />
+            <div className="w-3.5 h-3.5 rounded-full bg-white dark:bg-slate-800 border-2 border-indigo-600 shadow-sm flex items-center justify-center hover:scale-125 transition-transform" />
             <div className="w-0.5 h-3 bg-indigo-600" />
           </div>
 
-          {/* 8 Resize Handles */}
+          {/* 8 Resize Handles with expanded touch targets */}
           {RESIZE_HANDLES.map((dir) => (
             <div
               key={dir}
               onPointerDown={(e) => handlePointerDownResize(e, dir)}
-              className={`absolute w-2.5 h-2.5 bg-white dark:bg-slate-800 border-2 border-indigo-600 rounded-xs shadow-xs z-40 hover:scale-125 transition-transform ${getHandlePositionClass(
+              className={`absolute w-3 h-3 bg-white dark:bg-slate-800 border-2 border-indigo-600 rounded-xs shadow-xs z-40 hover:scale-125 transition-transform touch-none before:absolute before:-inset-3.5 before:content-[''] before:touch-none ${getHandlePositionClass(
                 dir
               )}`}
             />

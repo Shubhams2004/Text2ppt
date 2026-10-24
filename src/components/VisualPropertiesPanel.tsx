@@ -29,6 +29,7 @@ import {
   Minus,
   RotateCw,
   Sparkles,
+  X,
 } from 'lucide-react';
 
 export interface VisualPropertiesPanelProps {
@@ -76,6 +77,7 @@ export const VisualPropertiesPanel: React.FC<VisualPropertiesPanelProps> = ({
   onDuplicateElement,
   onLayerChange,
   onAlignElement,
+  onClose,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -108,7 +110,7 @@ export const VisualPropertiesPanel: React.FC<VisualPropertiesPanelProps> = ({
     element.type === 'quote';
 
   return (
-    <div className="w-72 sm:w-80 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl flex flex-col text-xs max-h-[85vh] overflow-hidden select-none animate-in fade-in zoom-in-95 duration-150">
+    <div className="w-full max-w-full sm:w-80 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl flex flex-col text-xs max-h-[75vh] md:max-h-[85vh] overflow-hidden select-none animate-in fade-in zoom-in-95 duration-150">
       {/* Header */}
       <div className="px-3.5 py-2.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/80 dark:bg-slate-800/50 flex-none">
         <div className="flex items-center gap-1.5">
@@ -120,18 +122,28 @@ export const VisualPropertiesPanel: React.FC<VisualPropertiesPanelProps> = ({
         <div className="flex items-center gap-1">
           <button
             onClick={() => onDuplicateElement(element.id)}
-            className="p-1 text-slate-500 hover:text-indigo-600 dark:text-slate-400 rounded hover:bg-slate-200/60 dark:hover:bg-slate-700 transition-colors"
+            className="p-1.5 text-slate-500 hover:text-indigo-600 dark:text-slate-400 rounded-lg hover:bg-slate-200/60 dark:hover:bg-slate-700 transition-colors cursor-pointer"
             title="Duplicate Element (Ctrl+D)"
           >
             <Copy className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={() => onDeleteElement(element.id)}
-            className="p-1 text-slate-500 hover:text-rose-600 dark:text-slate-400 rounded hover:bg-slate-200/60 dark:hover:bg-slate-700 transition-colors"
+            className="p-1.5 text-slate-500 hover:text-rose-600 dark:text-slate-400 rounded-lg hover:bg-slate-200/60 dark:hover:bg-slate-700 transition-colors cursor-pointer"
             title="Delete Element (Del)"
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="p-1.5 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 rounded-lg hover:bg-slate-200/60 dark:hover:bg-slate-700 transition-colors cursor-pointer ml-1"
+              title="Close Properties Panel"
+              aria-label="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
