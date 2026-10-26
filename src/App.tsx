@@ -18,6 +18,7 @@ import { Editor, InputMode } from './components/Editor';
 import { Preview } from './components/Preview';
 import { ValidationStatus } from './components/ValidationStatus';
 import { HelpModal } from './components/HelpModal';
+import { LandingPage } from './components/LandingPage';
 import { Presentation, ThemeId, ValidationIssue } from './models/presentation';
 import {
   FileDown,
@@ -36,6 +37,33 @@ import {
 } from './utils/projectStorage';
 
 export default function App() {
+  const [currentView, setCurrentView] = useState<'studio' | 'landing'>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.toLowerCase();
+      if (hash === '#landing' || hash === '#about' || hash === '#guide') {
+        return 'landing';
+      }
+      if (hash === '#studio' || hash === '#editor') {
+        return 'studio';
+      }
+    }
+    return 'landing';
+  });
+
+  // Sync hash routing
+  useEffect(() => {
+    const handleHash = () => {
+      const hash = window.location.hash.toLowerCase();
+      if (hash === '#landing' || hash === '#about' || hash === '#guide') {
+        setCurrentView('landing');
+      } else if (hash === '#studio' || hash === '#editor') {
+        setCurrentView('studio');
+      }
+    };
+    window.addEventListener('hashchange', handleHash);
+    return () => window.removeEventListener('hashchange', handleHash);
+  }, []);
+
   const [inputMode, setInputMode] = useState<InputMode>('code');
   const [code, setCode] = useState<string>(DEFAULT_CODE);
   const [simpleText, setSimpleText] = useState<string>(DEFAULT_SIMPLE_TEXT);
@@ -690,6 +718,26 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [handleExport]);
 
+  if (currentView === 'landing') {
+    return (
+      <LandingPage
+        onOpenStudio={() => {
+          setCurrentView('studio');
+          window.location.hash = '#studio';
+        }}
+        onLoadSampleAndOpen={(sampleCode) => {
+          setCode(sampleCode);
+          setInputMode('code');
+          setActiveSlideIndex(0);
+          setCurrentView('studio');
+          window.location.hash = '#studio';
+        }}
+        isDarkMode={isDarkMode}
+        onToggleDarkMode={toggleDarkMode}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans antialiased">
       {/* Top Header */}
@@ -703,6 +751,10 @@ export default function App() {
         isExporting={isExporting}
         exportingFormat={exportingFormat}
         onOpenHelp={() => setIsHelpOpen(true)}
+        onNavigateLanding={() => {
+          setCurrentView('landing');
+          window.location.hash = '#landing';
+        }}
         hasErrors={hasErrors}
         activeMobileTab={activeMobileTab}
         onMobileTabChange={setActiveMobileTab}

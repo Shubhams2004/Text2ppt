@@ -20,6 +20,8 @@ import {
   Archive,
   Menu,
   X,
+  BookOpen,
+  ArrowRight,
 } from 'lucide-react';
 import { Presentation, ThemeId } from '../models/presentation';
 import { THEMES } from '../themes/presentationThemes';
@@ -37,6 +39,7 @@ interface HeaderProps {
   isExporting: boolean;
   exportingFormat?: ExportFormat | null;
   onOpenHelp: () => void;
+  onNavigateLanding?: () => void;
   hasErrors: boolean;
   activeMobileTab: 'editor' | 'preview';
   onMobileTabChange: (tab: 'editor' | 'preview') => void;
@@ -69,6 +72,7 @@ export const Header: React.FC<HeaderProps> = ({
   isExporting,
   exportingFormat = null,
   onOpenHelp,
+  onNavigateLanding,
   hasErrors,
   activeMobileTab,
   onMobileTabChange,
@@ -158,7 +162,13 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="max-w-7xl mx-auto px-2.5 sm:px-4 lg:px-6 h-14 sm:h-16 flex items-center justify-between gap-1.5 sm:gap-4">
         {/* Left: Branding & Title */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <div className="flex items-center gap-2">
+          <button
+            onClick={onNavigateLanding}
+            className={`flex items-center gap-2 text-left ${
+              onNavigateLanding ? 'cursor-pointer hover:opacity-85 transition-opacity' : ''
+            }`}
+            title={onNavigateLanding ? 'About Code2PPT Studio & User Guide' : undefined}
+          >
             <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-600 to-violet-600 text-white flex items-center justify-center shadow-xs shadow-indigo-600/20 flex-none">
               <Layers className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
@@ -175,7 +185,7 @@ export const Header: React.FC<HeaderProps> = ({
                 {presentation.title || 'Untitled Presentation'}
               </p>
             </div>
-          </div>
+          </button>
         </div>
 
         {/* Center: Device Storage Status on desktop */}
@@ -403,6 +413,18 @@ export const Header: React.FC<HeaderProps> = ({
               aria-label="Toggle dark/light theme"
             >
               {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-600" />}
+            </button>
+          )}
+
+          {/* Desktop About & Guide Link */}
+          {onNavigateLanding && (
+            <button
+              onClick={onNavigateLanding}
+              className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800/70 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer flex-none"
+              title="About Code2PPT Studio and Complete User Guide"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-indigo-500" />
+              <span>About & Guide</span>
             </button>
           )}
 
@@ -743,6 +765,23 @@ export const Header: React.FC<HeaderProps> = ({
               ))}
             </div>
           </div>
+
+          {/* Mobile About & Guide Link */}
+          {onNavigateLanding && (
+            <button
+              onClick={() => {
+                onNavigateLanding();
+                setIsMobileMenuOpen(false);
+              }}
+              className="w-full flex items-center justify-between p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 font-semibold text-xs cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-indigo-500" />
+                <span>About Code2PPT & User Guide</span>
+              </span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          )}
 
           {/* Mobile Help & Info */}
           <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
