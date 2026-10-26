@@ -19,6 +19,8 @@ import { Preview } from './components/Preview';
 import { ValidationStatus } from './components/ValidationStatus';
 import { HelpModal } from './components/HelpModal';
 import { LandingPage } from './components/LandingPage';
+import { CanvasErrorBoundary } from './components/CanvasErrorBoundary';
+import { TemplateModal } from './components/TemplateModal';
 import { Presentation, ThemeId, ValidationIssue } from './models/presentation';
 import {
   FileDown,
@@ -26,6 +28,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Check,
+  Sparkles,
+  X,
 } from 'lucide-react';
 import {
   saveProjectLocally,
@@ -77,6 +81,11 @@ export default function App() {
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportSuccess, setExportSuccess] = useState<boolean>(false);
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState<boolean>(false);
+  const [restoredSessionNotification, setRestoredSessionNotification] = useState<{
+    title: string;
+    slideCount: number;
+  } | null>(null);
   const [activeLine, setActiveLine] = useState<number | null>(null);
 
   // Dark mode state with persistence and system detection
@@ -163,6 +172,14 @@ export default function App() {
         }
         setHistory([saved.code]);
         setHistoryIndex(0);
+
+        if (saved.code !== DEFAULT_CODE) {
+          const estimatedSlides = (saved.code.match(/^\s*slide\s+/gm) || []).length || 1;
+          setRestoredSessionNotification({
+            title: saved.title || 'Previous Presentation',
+            slideCount: estimatedSlides,
+          });
+        }
       }
     }).catch(() => {
       // Ignore storage loading errors
@@ -676,15 +693,22 @@ export default function App() {
       if (result.success) {
         setExportSuccess(true);
         setExportSuccessFormat(format);
+        setQualityToast(`Successfully downloaded ${format.toUpperCase()} (${presentation.slides.length} slides)`);
         setTimeout(() => {
           setExportSuccess(false);
           setExportSuccessFormat(null);
-        }, 3000);
+          setQualityToast(null);
+        }, 3500);
       } else {
-        console.error('Export failed:', result.error);
+        const errorMsg = result.error || `Unable to generate ${format.toUpperCase()}. Please check slide contents.`;
+        setQualityToast(`Export error: ${errorMsg}`);
+        setTimeout(() => setQualityToast(null), 5000);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Unexpected export error:', err);
+      const errorMsg = err?.message || 'An unexpected error occurred during export.';
+      setQualityToast(`Export error: ${errorMsg}`);
+      setTimeout(() => setQualityToast(null), 5000);
     } finally {
       setIsExporting(false);
       setExportingFormat(null);
@@ -775,7 +799,39 @@ export default function App() {
         onImportProjectFile={handleImportProjectFile}
         onImportMarkdownFile={handleImportMarkdownFile}
         onImportCsvFile={handleImportCsvFile}
+        onOpenTemplates={() => setIsTemplateModalOpen(true)}
       />
+
+      {/* Session Recovery Banner */}
+      {restoredSessionNotification && (
+        <div className="bg-indigo-50/90 dark:bg-slate-900 border-b border-indigo-200/80 dark:border-slate-800 px-4 py-2 flex items-center justify-between text-xs text-indigo-950 dark:text-indigo-200 animate-in fade-in flex-none">
+          <div className="flex items-center gap-2 truncate">
+            <span className="font-semibold text-indigo-700 dark:text-indigo-400 flex-none">Session Restored</span>
+            <span aria-hidden="true" className="text-indigo-300 dark:text-indigo-700 flex-none">·</span>
+            <span className="truncate">
+              Loaded previous work <strong>"{restoredSessionNotification.title}"</strong> ({restoredSessionNotification.slideCount} slides).
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                handleReset();
+                setRestoredSessionNotification(null);
+              }}
+              className="ml-2 font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex-none cursor-pointer"
+            >
+              Start Fresh
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setRestoredSessionNotification(null)}
+            className="p-1 hover:bg-indigo-100 dark:hover:bg-slate-800 rounded-md text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex-none ml-2 cursor-pointer"
+            title="Dismiss notification"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Main Two-Panel Studio Layout */}
       <main className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden pb-14 md:pb-0">
@@ -819,22 +875,27 @@ export default function App() {
             activeMobileTab === 'preview' ? 'flex' : 'hidden md:flex'
           }`}
         >
-          <Preview
-            presentation={presentation}
-            themeId={presentation.theme}
-            activeSlideIndex={clampedSlideIndex}
-            onSelectSlide={setActiveSlideIndex}
-            onUpdatePresentation={handleUpdatePresentation}
-            batchItems={batchResult.items}
-            selectedBatchIndex={safeBatchIndex}
-            onSelectBatchItem={handleSelectBatchItem}
-            canUndo={canUndo}
-            canRedo={canRedo}
-            onUndo={handleUndo}
-            onRedo={handleRedo}
-            onExport={handleExport}
-            isExporting={isExporting}
-          />
+          <CanvasErrorBoundary
+            fallbackSlideTitle={presentation.slides[clampedSlideIndex]?.title}
+            onResetSlide={() => setActiveSlideIndex(0)}
+          >
+            <Preview
+              presentation={presentation}
+              themeId={presentation.theme}
+              activeSlideIndex={clampedSlideIndex}
+              onSelectSlide={setActiveSlideIndex}
+              onUpdatePresentation={handleUpdatePresentation}
+              batchItems={batchResult.items}
+              selectedBatchIndex={safeBatchIndex}
+              onSelectBatchItem={handleSelectBatchItem}
+              canUndo={canUndo}
+              canRedo={canRedo}
+              onUndo={handleUndo}
+              onRedo={handleRedo}
+              onExport={handleExport}
+              isExporting={isExporting}
+            />
+          </CanvasErrorBoundary>
         </section>
       </main>
 
@@ -942,14 +1003,14 @@ export default function App() {
         </div>
       </nav>
 
-      {/* Floating Quality Toast Notification */}
+      {/* Floating Quality / Export Toast Notification */}
       {qualityToast && (
         <div
           role="status"
           aria-live="polite"
           className="fixed bottom-12 right-6 z-50 bg-slate-900/95 dark:bg-slate-100 text-white dark:text-slate-900 px-4 py-2.5 rounded-xl shadow-2xl border border-slate-700 dark:border-slate-300 text-xs font-medium flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150"
         >
-          <span className="w-2 h-2 rounded-full bg-emerald-400 dark:bg-emerald-600 flex-none animate-pulse" />
+          <Sparkles className="w-3.5 h-3.5 text-indigo-400 dark:text-indigo-600 flex-none" />
           <span>{qualityToast}</span>
         </div>
       )}
@@ -960,6 +1021,16 @@ export default function App() {
         hasErrors={hasErrors}
         slideCount={presentation.slides.length}
         onSelectLine={handleSelectLine}
+      />
+
+      {/* Presentation Template Gallery Modal */}
+      <TemplateModal
+        isOpen={isTemplateModalOpen}
+        onClose={() => setIsTemplateModalOpen(false)}
+        onSelectTemplate={(templateCode) => {
+          handleLoadPreset(templateCode);
+          setIsTemplateModalOpen(false);
+        }}
       />
 
       {/* Syntax Guide / Help Modal */}

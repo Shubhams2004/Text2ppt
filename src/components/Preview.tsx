@@ -41,7 +41,55 @@ import {
   Edit3,
   ZoomIn,
   ZoomOut,
+  Code2,
+  Quote,
+  TrendingUp,
+  CheckCircle2,
+  AlertCircle,
+  Lightbulb,
+  Star,
+  Target,
+  Trophy,
+  Clock,
+  User,
+  Briefcase,
+  GraduationCap,
+  Heart,
+  Shield,
+  Timer,
+  Check,
+  Play,
+  Pause,
+  RotateCcw,
+  HelpCircle,
 } from 'lucide-react';
+
+export interface IconPreset {
+  id: string;
+  name: string;
+  category: string;
+  path: string;
+}
+
+export const ICON_PRESETS: IconPreset[] = [
+  { id: 'check', name: 'Checkmark', category: 'Status', path: 'M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4 12 14.01 9 11.01' },
+  { id: 'alert', name: 'Warning', category: 'Status', path: 'M12 8v4 M12 16h.01 M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z' },
+  { id: 'lightbulb', name: 'Idea', category: 'Concept', path: 'M9 18h6 M10 22h4 M15 14c.2-.98.6-1.74 1.4-2.5A4.65 4.65 0 0 0 18 8a6 6 0 0 0-12 0c0 1 .2 2.2 1.5 3.5.9.8 1.4 1.5 1.5 2.5' },
+  { id: 'star', name: 'Star', category: 'Concept', path: 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z' },
+  { id: 'target', name: 'Target', category: 'Strategy', path: 'M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 4a6 6 0 1 0 6 6 6 6 0 0 0-6-6zm0 4a2 2 0 1 0 2 2 2 2 0 0 0-2-2z' },
+  { id: 'trophy', name: 'Trophy', category: 'Strategy', path: 'M6 9H4.5a2.5 2.5 0 0 1 0-5H6 M18 9h1.5a2.5 2.5 0 0 0 0-5H18 M4 22h16 M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22 M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22 M18 2H6v7a6 6 0 0 0 12 0V2Z' },
+  { id: 'clock', name: 'Timeline', category: 'General', path: 'M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 4v6l4 2' },
+  { id: 'user', name: 'Audience', category: 'General', path: 'M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2 M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z' },
+  { id: 'briefcase', name: 'Business', category: 'Business', path: 'M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16 M2 7h20v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7z' },
+  { id: 'education', name: 'Academic', category: 'Concept', path: 'M22 10v6 M2 10l10-5 10 5-10 5z M6 12v5c0 2 2 3 6 3s6-1 6-3v-5' },
+  { id: 'heart', name: 'Health/Care', category: 'General', path: 'M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z' },
+  { id: 'shield', name: 'Security', category: 'Business', path: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z' },
+];
+
+export function createSvgIconDataUri(pathData: string, strokeColor: string = '#4F46E5'): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 24 24" fill="none" stroke="${strokeColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${pathData}"/></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
 import {
   ChartElement,
   ChartType,
@@ -334,6 +382,31 @@ export const Preview: React.FC<PreviewProps> = ({
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [showFilmstrip, setShowFilmstrip] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 768);
   const [isMobilePropertiesOpen, setIsMobilePropertiesOpen] = useState(false);
+  const [isLayoutMenuOpen, setIsLayoutMenuOpen] = useState(false);
+  const [isIconMenuOpen, setIsIconMenuOpen] = useState(false);
+  const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
+  const [timerSeconds, setTimerSeconds] = useState(0);
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [showPresenterNotes, setShowPresenterNotes] = useState(false);
+
+  // Presenter rehearsal timer effect
+  useEffect(() => {
+    let interval: any = null;
+    if (isTimerRunning && isFullscreen) {
+      interval = setInterval(() => {
+        setTimerSeconds((s) => s + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isTimerRunning, isFullscreen]);
+
+  const formatTimer = (totalSec: number) => {
+    const m = Math.floor(totalSec / 60)
+      .toString()
+      .padStart(2, '0');
+    const s = (totalSec % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const theme = THEMES[themeId] || THEMES.modern;
@@ -548,12 +621,74 @@ export const Preview: React.FC<PreviewProps> = ({
   };
 
   // Insert new element into current slide with default spatial geometry
-  const handleAddElement = (type: 'text' | 'bullet' | 'shape' | 'table' | 'chart', subtype?: string) => {
+  const handleAddElement = (
+    type: 'text' | 'bullet' | 'code' | 'stat' | 'quote' | 'shape' | 'table' | 'chart' | 'icon',
+    subtype?: string
+  ) => {
     if (!currentSlide || !onUpdatePresentation) return;
     const id = `el-${Date.now()}`;
     let newEl: SlideElement;
 
-    if (type === 'shape') {
+    if (type === 'code') {
+      newEl = {
+        id,
+        type: 'text',
+        content: `// Sample Code Block\nfunction calculateMetrics(records) {\n  return records.filter(r => r.valid).length;\n}`,
+        fontFamily: 'Courier New',
+        fontSize: 13,
+        color: '#38BDF8',
+        x: 1.0,
+        y: 1.6,
+        w: 8.0,
+        h: 2.3,
+        line: 1,
+      };
+    } else if (type === 'stat') {
+      newEl = {
+        id,
+        type: 'text',
+        content: `+142%\nQuarterly Growth Rate`,
+        fontSize: 30,
+        bold: true,
+        color: theme.accentColor,
+        align: 'center',
+        x: 2.5,
+        y: 1.8,
+        w: 5.0,
+        h: 1.8,
+        line: 1,
+      };
+    } else if (type === 'quote') {
+      newEl = {
+        id,
+        type: 'quote',
+        content: 'Simplicity is prerequisite for reliability. — Edsger W. Dijkstra',
+        fontFamily: 'Georgia',
+        fontSize: 15,
+        italic: true,
+        color: theme.titleColor,
+        x: 1.2,
+        y: 1.8,
+        w: 7.6,
+        h: 1.6,
+        line: 1,
+      };
+    } else if (type === 'icon') {
+      const preset = ICON_PRESETS.find((p) => p.id === subtype) || ICON_PRESETS[0];
+      newEl = {
+        id,
+        type: 'image',
+        content: `${preset.name} Icon`,
+        src: createSvgIconDataUri(preset.path, theme.accentColor),
+        alt: `${preset.name} Icon`,
+        fit: 'contain',
+        x: 1.2,
+        y: 1.8,
+        w: 1.2,
+        h: 1.2,
+        line: 1,
+      };
+    } else if (type === 'shape') {
       newEl = {
         id,
         type: 'shape',
@@ -635,6 +770,7 @@ export const Preview: React.FC<PreviewProps> = ({
     onUpdatePresentation({ ...presentation, slides: newSlides }, true);
     setSelectedElementId(id);
     setIsShapeMenuOpen(false);
+    setIsIconMenuOpen(false);
   };
 
   // Local image upload handler
@@ -1000,14 +1136,48 @@ export const Preview: React.FC<PreviewProps> = ({
               <span>Bullet</span>
             </button>
 
+            {/* Code Snippet Button */}
+            <button
+              onClick={() => handleAddElement('code')}
+              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-indigo-600 rounded-md border border-slate-200 dark:border-slate-700 shadow-2xs font-medium cursor-pointer"
+              title="Insert Monospace Code Snippet"
+            >
+              <Code2 className="w-3 h-3 text-cyan-500" />
+              <span>Code</span>
+            </button>
+
+            {/* Metric Stat Button */}
+            <button
+              onClick={() => handleAddElement('stat')}
+              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-indigo-600 rounded-md border border-slate-200 dark:border-slate-700 shadow-2xs font-medium cursor-pointer"
+              title="Insert High-Impact Stat / Metric Callout"
+            >
+              <TrendingUp className="w-3 h-3 text-emerald-500" />
+              <span>Metric</span>
+            </button>
+
+            {/* Quote Callout Button */}
+            <button
+              onClick={() => handleAddElement('quote')}
+              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-indigo-600 rounded-md border border-slate-200 dark:border-slate-700 shadow-2xs font-medium cursor-pointer"
+              title="Insert Quote / Callout Card"
+            >
+              <Quote className="w-3 h-3 text-amber-500" />
+              <span>Quote</span>
+            </button>
+
             {/* Shape Menu */}
             <div className="relative">
               <button
-                onClick={() => setIsShapeMenuOpen(!isShapeMenuOpen)}
+                onClick={() => {
+                  setIsShapeMenuOpen(!isShapeMenuOpen);
+                  setIsIconMenuOpen(false);
+                  setIsLayoutMenuOpen(false);
+                }}
                 className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-indigo-600 rounded-md border border-slate-200 dark:border-slate-700 shadow-2xs font-medium cursor-pointer"
                 title="Add native PowerPoint shape"
               >
-                <Shapes className="w-3 h-3 text-emerald-500" />
+                <Shapes className="w-3 h-3 text-indigo-500" />
                 <span>Shape</span>
                 <ChevronDown className="w-2.5 h-2.5 opacity-60" />
               </button>
@@ -1017,11 +1187,58 @@ export const Preview: React.FC<PreviewProps> = ({
                     <button
                       key={sh}
                       onClick={() => handleAddElement('shape', sh)}
-                      className="w-full text-left px-2.5 py-1 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 rounded font-medium capitalize text-slate-700 dark:text-slate-300"
+                      className="w-full text-left px-2.5 py-1 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 rounded font-medium capitalize text-slate-700 dark:text-slate-300 cursor-pointer"
                     >
                       {sh.replace('-', ' ')}
                     </button>
                   ))}
+                </div>
+              )}
+            </div>
+
+            {/* Icon / Symbol Menu */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setIsIconMenuOpen(!isIconMenuOpen);
+                  setIsShapeMenuOpen(false);
+                  setIsLayoutMenuOpen(false);
+                }}
+                className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-indigo-600 rounded-md border border-slate-200 dark:border-slate-700 shadow-2xs font-medium cursor-pointer"
+                title="Insert Presentation Icon / Symbol"
+              >
+                <Sparkles className="w-3 h-3 text-amber-500" />
+                <span>Icon</span>
+                <ChevronDown className="w-2.5 h-2.5 opacity-60" />
+              </button>
+              {isIconMenuOpen && (
+                <div className="absolute left-0 mt-1.5 w-52 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 pb-1 mb-1 border-b border-slate-100 dark:border-slate-800">
+                    Icons & Symbols
+                  </div>
+                  <div className="grid grid-cols-3 gap-1">
+                    {ICON_PRESETS.map((ic) => (
+                      <button
+                        key={ic.id}
+                        onClick={() => handleAddElement('icon', ic.id)}
+                        className="flex flex-col items-center justify-center p-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/60 text-slate-700 dark:text-slate-300 transition-colors cursor-pointer group"
+                        title={`Insert ${ic.name} Icon`}
+                      >
+                        <svg
+                          className="w-4 h-4 text-indigo-500 group-hover:scale-110 transition-transform"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d={ic.path} />
+                        </svg>
+                        <span className="text-[9px] mt-0.5 truncate max-w-full font-medium">{ic.name}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -1050,8 +1267,57 @@ export const Preview: React.FC<PreviewProps> = ({
               title="Upload image from device"
             >
               <Upload className="w-3 h-3 text-rose-500" />
-              <span>Upload Image</span>
+              <span>Image</span>
             </button>
+
+            <div className="h-4 w-px bg-slate-300 dark:bg-slate-700 mx-1" />
+
+            {/* Quick Slide Layout Switcher */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setIsLayoutMenuOpen(!isLayoutMenuOpen);
+                  setIsShapeMenuOpen(false);
+                  setIsIconMenuOpen(false);
+                }}
+                className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-indigo-600 rounded-md border border-slate-200 dark:border-slate-700 shadow-2xs font-medium cursor-pointer"
+                title="Switch Slide Layout Archetype"
+              >
+                <LayoutGrid className="w-3 h-3 text-indigo-500" />
+                <span className="capitalize">{currentSlide.layout ? currentSlide.layout.replace('-', ' ') : 'Layout'}</span>
+                <ChevronDown className="w-2.5 h-2.5 opacity-60" />
+              </button>
+              {isLayoutMenuOpen && (
+                <div className="absolute left-0 mt-1.5 w-44 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 p-1.5 z-50 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1">
+                    Slide Layouts
+                  </div>
+                  {(['title', 'title-content', 'two-column', 'text-image', 'image-text', 'full-image', 'blank'] as const).map(
+                    (l) => (
+                      <button
+                        key={l}
+                        onClick={() => {
+                          if (onUpdatePresentation && currentSlide) {
+                            const updated = { ...currentSlide, layout: l as SlideLayout };
+                            const newSlides = slides.map((s, i) => (i === activeSlideIndex ? updated : s));
+                            onUpdatePresentation({ ...presentation, slides: newSlides }, true);
+                          }
+                          setIsLayoutMenuOpen(false);
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 text-xs rounded-lg font-medium capitalize flex items-center justify-between cursor-pointer ${
+                          (currentSlide.layout || 'title-content') === l
+                            ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold'
+                            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        <span>{l.replace('-', ' ')}</span>
+                        {(currentSlide.layout || 'title-content') === l && <Check className="w-3.5 h-3.5" />}
+                      </button>
+                    )
+                  )}
+                </div>
+              )}
+            </div>
 
             <div className="h-4 w-px bg-slate-300 dark:bg-slate-700 mx-1" />
 
@@ -1074,7 +1340,7 @@ export const Preview: React.FC<PreviewProps> = ({
               <button
                 onClick={onUndo}
                 disabled={!canUndo}
-                className="p-1 text-slate-600 dark:text-slate-300 hover:text-indigo-600 disabled:opacity-30 rounded hover:bg-white dark:hover:bg-slate-800"
+                className="p-1 text-slate-600 dark:text-slate-300 hover:text-indigo-600 disabled:opacity-30 rounded hover:bg-white dark:hover:bg-slate-800 cursor-pointer"
                 title="Undo (Ctrl+Z)"
               >
                 <Undo2 className="w-3.5 h-3.5" />
@@ -1084,12 +1350,21 @@ export const Preview: React.FC<PreviewProps> = ({
               <button
                 onClick={onRedo}
                 disabled={!canRedo}
-                className="p-1 text-slate-600 dark:text-slate-300 hover:text-indigo-600 disabled:opacity-30 rounded hover:bg-white dark:hover:bg-slate-800"
+                className="p-1 text-slate-600 dark:text-slate-300 hover:text-indigo-600 disabled:opacity-30 rounded hover:bg-white dark:hover:bg-slate-800 cursor-pointer"
                 title="Redo (Ctrl+Y)"
               >
                 <Redo2 className="w-3.5 h-3.5" />
               </button>
             )}
+
+            {/* Shortcuts Help Modal trigger */}
+            <button
+              onClick={() => setIsShortcutsModalOpen(true)}
+              className="p-1 text-slate-500 hover:text-indigo-600 dark:text-slate-400 rounded hover:bg-white dark:hover:bg-slate-800 cursor-pointer ml-0.5"
+              title="Visual Studio Shortcuts & Gestures (?)"
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+            </button>
           </div>
 
           {/* Right: Slide Deck Operations */}
@@ -1428,9 +1703,68 @@ export const Preview: React.FC<PreviewProps> = ({
 
                 {/* Background color */}
                 <div>
-                  <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                    Background Color
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
+                      Slide Background
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!onUpdatePresentation) return;
+                        const bg = currentSlide.background;
+                        const newSlides = slides.map((s) => ({ ...s, background: bg }));
+                        onUpdatePresentation({ ...presentation, slides: newSlides }, true);
+                      }}
+                      className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                      title="Apply current background color to all slides in presentation"
+                    >
+                      Apply to all
+                    </button>
+                  </div>
+                  
+                  {/* Preset Swatches */}
+                  <div className="grid grid-cols-7 gap-1.5 mb-2">
+                    {[
+                      { label: 'Theme', val: undefined, bg: theme.bgColor },
+                      { label: 'White', val: '#ffffff', bg: '#ffffff' },
+                      { label: 'Off-White', val: '#f8fafc', bg: '#f8fafc' },
+                      { label: 'Slate', val: '#0f172a', bg: '#0f172a' },
+                      { label: 'Navy', val: '#0b1329', bg: '#0b1329' },
+                      { label: 'Charcoal', val: '#1e293b', bg: '#1e293b' },
+                      { label: 'Cream', val: '#faf5ea', bg: '#faf5ea' },
+                    ].map((swatch) => {
+                      const isActive =
+                        swatch.val === undefined
+                          ? !currentSlide.background
+                          : currentSlide.background?.toLowerCase() === swatch.val.toLowerCase();
+                      return (
+                        <button
+                          key={swatch.label}
+                          type="button"
+                          onClick={() => {
+                            if (!onUpdatePresentation) return;
+                            const updated = { ...currentSlide, background: swatch.val };
+                            const newSlides = slides.map((s, i) => (i === activeSlideIndex ? updated : s));
+                            onUpdatePresentation({ ...presentation, slides: newSlides }, true);
+                          }}
+                          className={`w-full aspect-square rounded-md border text-[9px] flex items-center justify-center transition-all cursor-pointer ${
+                            isActive
+                              ? 'border-indigo-600 ring-2 ring-indigo-500/30 scale-105 font-bold shadow-xs'
+                              : 'border-slate-300 dark:border-slate-700 hover:scale-105'
+                          }`}
+                          style={{ backgroundColor: swatch.bg }}
+                          title={swatch.label}
+                        >
+                          {swatch.val === undefined && (
+                            <span className="text-[8px] font-bold text-slate-500 dark:text-slate-400">
+                              Auto
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
                   <div className="flex items-center gap-2">
                     <input
                       type="color"
@@ -1442,18 +1776,24 @@ export const Preview: React.FC<PreviewProps> = ({
                         onUpdatePresentation({ ...presentation, slides: newSlides }, true);
                       }}
                       className="w-7 h-7 rounded-lg border-none cursor-pointer p-0 bg-transparent flex-none"
+                      title="Custom color picker"
                     />
-                    <button
-                      onClick={() => {
-                        if (!onUpdatePresentation) return;
-                        const updated = { ...currentSlide, background: undefined };
-                        const newSlides = slides.map((s, i) => (i === activeSlideIndex ? updated : s));
-                        onUpdatePresentation({ ...presentation, slides: newSlides }, true);
-                      }}
-                      className="px-2 py-1 text-[11px] bg-slate-100 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
-                    >
-                      Reset to Theme
-                    </button>
+                    <span className="text-[11px] font-mono text-slate-500">
+                      {currentSlide.background || `${theme.bgColor} (theme)`}
+                    </span>
+                    {currentSlide.background && (
+                      <button
+                        onClick={() => {
+                          if (!onUpdatePresentation) return;
+                          const updated = { ...currentSlide, background: undefined };
+                          const newSlides = slides.map((s, i) => (i === activeSlideIndex ? updated : s));
+                          onUpdatePresentation({ ...presentation, slides: newSlides }, true);
+                        }}
+                        className="ml-auto px-2 py-0.5 text-[10px] bg-slate-100 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 cursor-pointer"
+                      >
+                        Reset
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -1590,9 +1930,68 @@ export const Preview: React.FC<PreviewProps> = ({
 
                   {/* Background color */}
                   <div>
-                    <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-                      Background Color
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
+                        Background Color
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!onUpdatePresentation) return;
+                          const bg = currentSlide.background;
+                          const newSlides = slides.map((s) => ({ ...s, background: bg }));
+                          onUpdatePresentation({ ...presentation, slides: newSlides }, true);
+                        }}
+                        className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                        title="Apply current background color to all slides"
+                      >
+                        Apply to all
+                      </button>
+                    </div>
+
+                    {/* Mobile preset swatches */}
+                    <div className="grid grid-cols-7 gap-1.5 mb-2">
+                      {[
+                        { label: 'Theme', val: undefined, bg: theme.bgColor },
+                        { label: 'White', val: '#ffffff', bg: '#ffffff' },
+                        { label: 'Off-White', val: '#f8fafc', bg: '#f8fafc' },
+                        { label: 'Slate', val: '#0f172a', bg: '#0f172a' },
+                        { label: 'Navy', val: '#0b1329', bg: '#0b1329' },
+                        { label: 'Charcoal', val: '#1e293b', bg: '#1e293b' },
+                        { label: 'Cream', val: '#faf5ea', bg: '#faf5ea' },
+                      ].map((swatch) => {
+                        const isActive =
+                          swatch.val === undefined
+                            ? !currentSlide.background
+                            : currentSlide.background?.toLowerCase() === swatch.val.toLowerCase();
+                        return (
+                          <button
+                            key={swatch.label}
+                            type="button"
+                            onClick={() => {
+                              if (!onUpdatePresentation) return;
+                              const updated = { ...currentSlide, background: swatch.val };
+                              const newSlides = slides.map((s, i) => (i === activeSlideIndex ? updated : s));
+                              onUpdatePresentation({ ...presentation, slides: newSlides }, true);
+                            }}
+                            className={`w-full aspect-square rounded-md border text-[9px] flex items-center justify-center transition-all cursor-pointer ${
+                              isActive
+                                ? 'border-indigo-600 ring-2 ring-indigo-500/30 scale-105 font-bold shadow-xs'
+                                : 'border-slate-300 dark:border-slate-700 hover:scale-105'
+                            }`}
+                            style={{ backgroundColor: swatch.bg }}
+                            title={swatch.label}
+                          >
+                            {swatch.val === undefined && (
+                              <span className="text-[8px] font-bold text-slate-500 dark:text-slate-400">
+                                Auto
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+
                     <div className="flex items-center gap-2">
                       <input
                         type="color"
@@ -1605,17 +2004,22 @@ export const Preview: React.FC<PreviewProps> = ({
                         }}
                         className="w-7 h-7 rounded-lg border-none cursor-pointer p-0 bg-transparent flex-none"
                       />
-                      <button
-                        onClick={() => {
-                          if (!onUpdatePresentation) return;
-                          const updated = { ...currentSlide, background: undefined };
-                          const newSlides = slides.map((s, i) => (i === activeSlideIndex ? updated : s));
-                          onUpdatePresentation({ ...presentation, slides: newSlides }, true);
-                        }}
-                        className="px-2 py-1 text-[11px] bg-slate-100 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
-                      >
-                        Reset to Theme
-                      </button>
+                      <span className="text-[11px] font-mono text-slate-500">
+                        {currentSlide.background || `${theme.bgColor} (theme)`}
+                      </span>
+                      {currentSlide.background && (
+                        <button
+                          onClick={() => {
+                            if (!onUpdatePresentation) return;
+                            const updated = { ...currentSlide, background: undefined };
+                            const newSlides = slides.map((s, i) => (i === activeSlideIndex ? updated : s));
+                            onUpdatePresentation({ ...presentation, slides: newSlides }, true);
+                          }}
+                          className="ml-auto px-2 py-0.5 text-[10px] bg-slate-100 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 cursor-pointer"
+                        >
+                          Reset
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -1648,36 +2052,196 @@ export const Preview: React.FC<PreviewProps> = ({
         </div>
       )}
 
-      {/* Fullscreen Floating Presentation HUD */}
+      {/* Fullscreen Floating Presentation HUD & Speaker Notes Overlay */}
       {isFullscreen && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-md text-white border border-slate-700/80 px-4 py-2 rounded-2xl shadow-2xl flex items-center gap-4 text-xs z-50">
-          <button
-            onClick={() => onSelectSlide(Math.max(0, activeSlideIndex - 1))}
-            disabled={activeSlideIndex <= 0}
-            className="p-1 hover:bg-slate-800 rounded-lg disabled:opacity-30 cursor-pointer"
-            title="Previous Slide (Left Arrow)"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          <span className="font-semibold text-slate-300">
-            {activeSlideIndex + 1} / {totalSlides}
-          </span>
-          <button
-            onClick={() => onSelectSlide(Math.min(totalSlides - 1, activeSlideIndex + 1))}
-            disabled={activeSlideIndex >= totalSlides - 1}
-            className="p-1 hover:bg-slate-800 rounded-lg disabled:opacity-30 cursor-pointer"
-            title="Next Slide (Right Arrow)"
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
-          <div className="w-px h-4 bg-slate-700" />
-          <button
-            onClick={() => setIsFullscreen(false)}
-            className="hover:text-indigo-400 cursor-pointer"
-            title="Exit Fullscreen (Esc)"
-          >
-            Exit (Esc)
-          </button>
+        <>
+          {/* Speaker Notes Overlay Card (toggleable during fullscreen presentation / rehearsal) */}
+          {showPresenterNotes && currentSlide?.notes && (
+            <div className="fixed top-6 right-6 max-w-sm bg-slate-900/95 backdrop-blur-md text-white border border-slate-700/80 p-4 rounded-xl shadow-2xl z-50 text-xs animate-in fade-in">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-700/60 mb-2">
+                <span className="font-bold flex items-center gap-1.5 text-indigo-400">
+                  <StickyNote className="w-3.5 h-3.5" />
+                  Slide {activeSlideIndex + 1} Notes
+                </span>
+                <button
+                  onClick={() => setShowPresenterNotes(false)}
+                  className="text-slate-400 hover:text-white p-0.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <p className="text-slate-200 leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap">
+                {currentSlide.notes}
+              </p>
+            </div>
+          )}
+
+          {/* Floating Presenter Rehearsal HUD */}
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-md text-white border border-slate-700/80 px-4 py-2 rounded-2xl shadow-2xl flex items-center gap-3 text-xs z-50">
+            {/* Slide Navigation */}
+            <button
+              onClick={() => onSelectSlide(Math.max(0, activeSlideIndex - 1))}
+              disabled={activeSlideIndex <= 0}
+              className="p-1 hover:bg-slate-800 rounded-lg disabled:opacity-30 cursor-pointer"
+              title="Previous Slide (Left Arrow)"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <span className="font-semibold text-slate-300">
+              {activeSlideIndex + 1} / {totalSlides}
+            </span>
+            <button
+              onClick={() => onSelectSlide(Math.min(totalSlides - 1, activeSlideIndex + 1))}
+              disabled={activeSlideIndex >= totalSlides - 1}
+              className="p-1 hover:bg-slate-800 rounded-lg disabled:opacity-30 cursor-pointer"
+              title="Next Slide (Right Arrow)"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+
+            <div className="w-px h-4 bg-slate-700" />
+
+            {/* Rehearsal Stopwatch Timer */}
+            <div className="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700/50">
+              <Timer className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="font-mono font-medium text-slate-200">
+                {formatTimer(timerSeconds)}
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsTimerRunning((prev) => !prev)}
+                className="p-0.5 hover:text-indigo-400 cursor-pointer transition-colors"
+                title={isTimerRunning ? 'Pause Rehearsal Timer' : 'Start Rehearsal Timer'}
+              >
+                {isTimerRunning ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsTimerRunning(false);
+                  setTimerSeconds(0);
+                }}
+                className="p-0.5 hover:text-slate-400 cursor-pointer transition-colors"
+                title="Reset Timer"
+              >
+                <RotateCcw className="w-3 h-3 text-slate-400 hover:text-white" />
+              </button>
+            </div>
+
+            {/* Speaker Notes Toggle */}
+            {currentSlide?.notes && (
+              <button
+                type="button"
+                onClick={() => setShowPresenterNotes((prev) => !prev)}
+                className={`p-1.5 rounded-lg border transition-colors cursor-pointer flex items-center gap-1 ${
+                  showPresenterNotes
+                    ? 'bg-indigo-600/30 border-indigo-500 text-indigo-300'
+                    : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:text-white'
+                }`}
+                title="Toggle Speaker Notes"
+              >
+                <StickyNote className="w-3.5 h-3.5" />
+                <span className="text-[11px] font-medium hidden sm:inline">Notes</span>
+              </button>
+            )}
+
+            <div className="w-px h-4 bg-slate-700" />
+
+            <button
+              onClick={() => setIsFullscreen(false)}
+              className="text-slate-400 hover:text-white cursor-pointer px-1 py-0.5 text-xs font-medium"
+              title="Exit Fullscreen (Esc)"
+            >
+              Exit (Esc)
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Keyboard Shortcuts Help Modal */}
+      {isShortcutsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-xs"
+            onClick={() => setIsShortcutsModalOpen(false)}
+          />
+          <div className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl z-10 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 mb-4">
+              <div className="flex items-center gap-2">
+                <HelpCircle className="w-5 h-5 text-indigo-500" />
+                <h3 className="font-bold text-base text-slate-900 dark:text-slate-100">
+                  Visual Studio Shortcuts
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsShortcutsModalOpen(false)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
+                <span className="text-slate-600 dark:text-slate-300 font-medium">Edit text inline</span>
+                <kbd className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded font-mono text-[11px] text-slate-700 dark:text-slate-300">
+                  Double Click
+                </kbd>
+              </div>
+              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
+                <span className="text-slate-600 dark:text-slate-300 font-medium">Nudge element position</span>
+                <kbd className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded font-mono text-[11px] text-slate-700 dark:text-slate-300">
+                  Arrow Keys (0.05")
+                </kbd>
+              </div>
+              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
+                <span className="text-slate-600 dark:text-slate-300 font-medium">Larger nudge</span>
+                <kbd className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded font-mono text-[11px] text-slate-700 dark:text-slate-300">
+                  Shift + Arrow (0.25")
+                </kbd>
+              </div>
+              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
+                <span className="text-slate-600 dark:text-slate-300 font-medium">Duplicate element</span>
+                <kbd className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded font-mono text-[11px] text-slate-700 dark:text-slate-300">
+                  Ctrl / Cmd + D
+                </kbd>
+              </div>
+              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
+                <span className="text-slate-600 dark:text-slate-300 font-medium">Delete selected element</span>
+                <kbd className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded font-mono text-[11px] text-slate-700 dark:text-slate-300">
+                  Del / Backspace
+                </kbd>
+              </div>
+              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
+                <span className="text-slate-600 dark:text-slate-300 font-medium">Undo / Redo</span>
+                <kbd className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded font-mono text-[11px] text-slate-700 dark:text-slate-300">
+                  Ctrl+Z / Ctrl+Y
+                </kbd>
+              </div>
+              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
+                <span className="text-slate-600 dark:text-slate-300 font-medium">Constrain rotation to 15°</span>
+                <kbd className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded font-mono text-[11px] text-slate-700 dark:text-slate-300">
+                  Shift + Rotate Drag
+                </kbd>
+              </div>
+              <div className="flex items-center justify-between py-1">
+                <span className="text-slate-600 dark:text-slate-300 font-medium">Deselect / Cancel edit</span>
+                <kbd className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded font-mono text-[11px] text-slate-700 dark:text-slate-300">
+                  Escape
+                </kbd>
+              </div>
+            </div>
+
+            <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsShortcutsModalOpen(false)}
+                className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg text-xs cursor-pointer"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -2428,6 +2992,16 @@ const InteractiveElementItem: React.FC<InteractiveElementItemProps> = ({
           >
             “{element.content}”
           </blockquote>
+        ) : element.fontFamily === 'Courier New' ? (
+          <div className="w-full h-full bg-slate-900/90 text-emerald-400 p-2 rounded-md font-mono text-[11px] overflow-hidden border border-slate-700/80 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between text-[9px] text-slate-400 border-b border-slate-800 pb-1 mb-1">
+              <span className="font-semibold text-slate-300">CODE</span>
+              <span className="text-[8px] uppercase tracking-wider text-slate-500">Monospace</span>
+            </div>
+            <pre className="flex-1 font-mono text-[10px] whitespace-pre-wrap leading-relaxed overflow-hidden text-emerald-300">
+              {element.content}
+            </pre>
+          </div>
         ) : (
           <p
             className="leading-snug break-words"
@@ -2459,18 +3033,60 @@ const InteractiveElementItem: React.FC<InteractiveElementItemProps> = ({
               element.type === 'bullet' ||
               element.type === 'subtitle' ||
               element.type === 'quote') && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onStartInlineEdit(element.id);
-                }}
-                className="px-2 py-0.5 hover:bg-slate-800 rounded-full font-medium flex items-center gap-1 text-slate-200 hover:text-white cursor-pointer"
-                title="Edit Text"
-              >
-                <Edit3 className="w-3 h-3 text-indigo-400" />
-                <span>Edit</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onStartInlineEdit(element.id);
+                  }}
+                  className="px-2 py-0.5 hover:bg-slate-800 rounded-full font-medium flex items-center gap-1 text-slate-200 hover:text-white cursor-pointer"
+                  title="Edit Text"
+                >
+                  <Edit3 className="w-3 h-3 text-indigo-400" />
+                  <span>Edit</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onUpdateElement({ ...element, bold: !element.bold }, true);
+                  }}
+                  className={`px-1.5 py-0.5 rounded-full font-bold cursor-pointer text-[10px] ${
+                    element.bold
+                      ? 'bg-indigo-600 text-white'
+                      : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                  }`}
+                  title="Toggle Bold"
+                >
+                  B
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const currentSize = element.fontSize || 14;
+                    onUpdateElement({ ...element, fontSize: Math.max(8, currentSize - 2) }, true);
+                  }}
+                  className="px-1.5 py-0.5 hover:bg-slate-800 rounded-full text-slate-300 hover:text-white cursor-pointer text-[10px] font-mono"
+                  title="Decrease Font Size (-2pt)"
+                >
+                  A-
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const currentSize = element.fontSize || 14;
+                    onUpdateElement({ ...element, fontSize: Math.min(72, currentSize + 2) }, true);
+                  }}
+                  className="px-1.5 py-0.5 hover:bg-slate-800 rounded-full text-slate-300 hover:text-white cursor-pointer text-[10px] font-mono"
+                  title="Increase Font Size (+2pt)"
+                >
+                  A+
+                </button>
+                <div className="w-px h-3 bg-slate-700" />
+              </>
             )}
             <button
               type="button"

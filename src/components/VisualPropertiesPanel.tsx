@@ -342,6 +342,104 @@ export const VisualPropertiesPanel: React.FC<VisualPropertiesPanelProps> = ({
               />
             </div>
 
+            {/* Quick Typography Presets */}
+            <div>
+              <label className="text-[10px] text-slate-400 block mb-1">Style Archetype</label>
+              <div className="grid grid-cols-3 gap-1">
+                <button
+                  type="button"
+                  onClick={() =>
+                    handlePropChange({
+                      fontSize: 28,
+                      bold: true,
+                      fontFamily: 'Arial',
+                      color: theme.titleColor,
+                    })
+                  }
+                  className="px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[10px] font-bold truncate transition-colors cursor-pointer"
+                  title="Headline (28pt, Bold)"
+                >
+                  Headline
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    handlePropChange({
+                      fontSize: 18,
+                      bold: true,
+                      fontFamily: 'Arial',
+                      color: theme.accentColor,
+                    })
+                  }
+                  className="px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[10px] font-semibold truncate transition-colors cursor-pointer"
+                  title="Subtitle (18pt, Accent)"
+                >
+                  Subtitle
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    handlePropChange({
+                      fontSize: 14,
+                      bold: false,
+                      fontFamily: 'Arial',
+                      color: theme.bodyColor,
+                    })
+                  }
+                  className="px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[10px] truncate transition-colors cursor-pointer"
+                  title="Body Text (14pt)"
+                >
+                  Body
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    handlePropChange({
+                      fontSize: 13,
+                      bold: false,
+                      fontFamily: 'Courier New',
+                      color: '#38BDF8',
+                    })
+                  }
+                  className="px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[10px] font-mono truncate transition-colors cursor-pointer"
+                  title="Code Snippet (13pt, Monospace)"
+                >
+                  Code
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    handlePropChange({
+                      fontSize: 32,
+                      bold: true,
+                      align: 'center',
+                      fontFamily: 'Arial',
+                      color: theme.accentColor,
+                    })
+                  }
+                  className="px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[10px] font-extrabold truncate transition-colors cursor-pointer"
+                  title="Big Metric Stat (32pt, Center)"
+                >
+                  Metric
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    handlePropChange({
+                      fontSize: 15,
+                      italic: true,
+                      fontFamily: 'Georgia',
+                      color: theme.titleColor,
+                    })
+                  }
+                  className="px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[10px] italic font-serif truncate transition-colors cursor-pointer"
+                  title="Quote (15pt, Italic)"
+                >
+                  Quote
+                </button>
+              </div>
+            </div>
+
             {/* Font Family & Size */}
             <div className="grid grid-cols-2 gap-2">
               <div>
