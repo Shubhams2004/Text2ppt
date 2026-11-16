@@ -47,7 +47,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 }) => {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [activeGuideTab, setActiveGuideTab] = useState<
-    'dsl' | 'visual' | 'simple' | 'batch' | 'quality' | 'export'
+    'dsl' | 'visual' | 'simple' | 'quality' | 'export'
   >('dsl');
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
   const [selectedDemoIndex, setSelectedDemoIndex] = useState<number>(0);
@@ -518,7 +518,7 @@ bullet "Reduced customer onboarding from 14 to 3 days"`,
               Everything You Need to Build High-Impact Decks
             </p>
             <p className="text-base text-slate-600 dark:text-slate-300">
-              From automated WCAG compliance to multi-presentation batch production, Code2PPT Studio is packed with capabilities.
+              From automated WCAG compliance to instant vector PPTX/PDF downloads, Code2PPT Studio is packed with capabilities.
             </p>
           </div>
 
@@ -550,12 +550,11 @@ bullet "Reduced customer onboarding from 14 to 3 days"`,
             {/* Feature 3 */}
             <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
               <div className="flex items-center gap-3 mb-3">
-                <Archive className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                <h4 className="font-bold text-slate-900 dark:text-white">Batch Deck Engine & ZIP Export</h4>
+                <Sparkles className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                <h4 className="font-bold text-slate-900 dark:text-white">Curated Template Gallery</h4>
               </div>
               <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                Define up to 20 presentations in one document using <code className="font-mono text-xs">=== presentation ===</code>.
-                Switch between decks instantly and download all decks in a single compressed <code className="font-mono text-xs">.zip</code> archive.
+                Jumpstart your slides with built-in academic thesis, executive pitch, research overview, and technical demo templates designed by professional designers.
               </p>
             </div>
 
@@ -610,7 +609,7 @@ bullet "Reduced customer onboarding from 14 to 3 days"`,
             </p>
             <p className="text-base text-slate-600 dark:text-slate-300">
               Follow this step-by-step walkthrough to master code-driven presentations, visual canvas editing,
-              and batch generation.
+              and quality audits.
             </p>
           </div>
 
@@ -620,9 +619,8 @@ bullet "Reduced customer onboarding from 14 to 3 days"`,
               { id: 'dsl', label: '1. Writing Code (DSL)', icon: Code2Icon },
               { id: 'visual', label: '2. Visual Canvas Editing', icon: Sliders },
               { id: 'simple', label: '3. Simple Text Outliner', icon: FileText },
-              { id: 'batch', label: '4. Batch Decks Engine', icon: Archive },
-              { id: 'quality', label: '5. Quality & WCAG Audits', icon: AlertTriangle },
-              { id: 'export', label: '6. Exports & Backups', icon: FileDown },
+              { id: 'quality', label: '4. Quality & WCAG Audits', icon: AlertTriangle },
+              { id: 'export', label: '5. Exports & Backups', icon: FileDown },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -847,56 +845,8 @@ shape "rectangle" x=10 y=60 w=80 h=20 fill="#0284c7"`}
 
 - Mobile-first visual studio
 - Automated WCAG contrast checks
-- Multi-deck batch export engine`}
+- Instant vector PPTX & PDF exports`}
                     </pre>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeGuideTab === 'batch' && (
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                    Batch Presentations Engine & ZIP Archive
-                  </h3>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                    Produce up to 20 unique presentation decks simultaneously in a single document.
-                  </p>
-                </div>
-
-                <div className="space-y-4 text-sm text-slate-600 dark:text-slate-300">
-                  <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80">
-                    <div className="font-bold text-slate-900 dark:text-white mb-1">
-                      Deck Separator Syntax:
-                    </div>
-                    <p className="text-xs mb-2">
-                      Separate each distinct presentation deck with three equal signs and the presentation name:
-                    </p>
-                    <code className="block p-2.5 rounded-lg bg-slate-950 text-indigo-300 font-mono text-xs">
-                      === presentation: Client Pitch - Acme Corp ===
-                    </code>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                    <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-800">
-                      <div className="font-bold text-slate-900 dark:text-white mb-1">Deck Selector Dropdown</div>
-                      <p className="text-slate-500">
-                        When in Batch mode, a dropdown appears in the toolbar allowing you to preview any deck instantly.
-                      </p>
-                    </div>
-                    <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-800">
-                      <div className="font-bold text-slate-900 dark:text-white mb-1">1-Click ZIP Archive</div>
-                      <p className="text-slate-500">
-                        Click &quot;Export All as ZIP&quot; to compile all decks into individual PowerPoint files bundled inside a .zip file.
-                      </p>
-                    </div>
-                    <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-800">
-                      <div className="font-bold text-slate-900 dark:text-white mb-1">Individual PPTX / PDF</div>
-                      <p className="text-slate-500">
-                        You can also export each selected deck individually without affecting the other decks.
-                      </p>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -1271,8 +1221,8 @@ shape "rectangle" x=10 y=60 w=80 h=20 fill="#0284c7"`}
                 a: 'Yes. The interface is mobile-first and responsive down to 320px viewport widths. You can switch between Code and Slide Preview, drag and resize elements using touch handles, edit text with a bottom properties sheet, and download PPTX/PDF files right on your mobile browser.',
               },
               {
-                q: 'How does the Batch Mode work?',
-                a: 'Batch Mode allows you to write multiple presentations in a single document by separating each presentation block with "=== presentation: Name ===". You can switch between decks using the deck picker in the editor and download all presentations at once as a consolidated .zip archive.',
+                q: 'Can I backup and restore my presentation projects locally?',
+                a: 'Yes. You can export complete project backups as .code2ppt.json files at any time. When you reopen the studio, your work is automatically restored from local browser storage, and you can import .json, .md, or .csv files seamlessly.',
               },
               {
                 q: 'How do the WCAG color contrast checks work?',
@@ -1334,12 +1284,14 @@ shape "rectangle" x=10 y=60 w=80 h=20 fill="#0284c7"`}
       {/* ── Footer ─────────────────────────────────────────────────────── */}
       <footer className="py-8 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs text-slate-500 dark:text-slate-400">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs">
               <Layers className="w-3.5 h-3.5" />
             </div>
             <span className="font-bold text-slate-700 dark:text-slate-200">Code2PPT Studio</span>
             <span>• 100% Client-Side In-Browser Presentation Engine</span>
+            <span>•</span>
+            <span className="font-semibold text-slate-700 dark:text-slate-300">Created by Shubham</span>
           </div>
 
           <div className="flex items-center gap-4">

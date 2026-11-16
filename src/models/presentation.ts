@@ -44,9 +44,15 @@ export interface BaseSlideElement {
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
+  strikethrough?: boolean;
   color?: string;
+  highlightColor?: string;
   align?: 'left' | 'center' | 'right' | 'justify';
+  verticalAlign?: 'top' | 'middle' | 'bottom';
   lineSpacing?: number;
+  letterSpacing?: number;
+  isLocked?: boolean;
+  isHidden?: boolean;
 }
 
 /**
@@ -87,6 +93,12 @@ export interface ImageElement extends BaseSlideElement {
   url?: string;
   alt?: string;
   fit?: 'contain' | 'cover' | 'fill';
+  flipH?: boolean;
+  flipV?: boolean;
+  brightness?: number; // 0 - 200%, default 100
+  contrast?: number;   // 0 - 200%, default 100
+  saturation?: number; // 0 - 200%, default 100
+  blur?: number;       // 0 - 20px, default 0
 }
 
 export type ShapeType =
@@ -97,7 +109,12 @@ export type ShapeType =
   | 'line'
   | 'arrow'
   | 'triangle'
-  | 'star';
+  | 'star'
+  | 'diamond'
+  | 'pentagon'
+  | 'hexagon'
+  | 'callout'
+  | 'speech-bubble';
 
 export interface ShapeElement extends BaseSlideElement {
   type: 'shape';
@@ -237,6 +254,7 @@ export interface Slide {
   elements: SlideElement[];
   notes?: string;
   background?: string;
+  aspectRatio?: '16:9' | '4:3';
 }
 
 export interface PresentationMetadata {
@@ -251,6 +269,7 @@ export interface Presentation {
   transition?: SlideTransition;
   slides: Slide[];
   metadata?: PresentationMetadata;
+  aspectRatio?: '16:9' | '4:3';
 }
 
 export type IssueSeverity = 'error' | 'warning' | 'info';

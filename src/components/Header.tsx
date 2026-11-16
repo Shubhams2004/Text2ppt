@@ -17,7 +17,6 @@ import {
   Save,
   FileSpreadsheet,
   FileCode,
-  Archive,
   Menu,
   X,
   BookOpen,
@@ -46,10 +45,6 @@ interface HeaderProps {
   exportSuccess: boolean;
   exportSuccessFormat?: ExportFormat | null;
   lastExportFormat?: ExportFormat;
-  totalBatchCount?: number;
-  onExportAllBatch?: (format?: ExportFormat) => void;
-  onExportAllBatchZip?: () => void;
-  isExportingAllBatch?: boolean;
   isDarkMode?: boolean;
   onToggleDarkMode?: () => void;
   canUndo?: boolean;
@@ -80,10 +75,6 @@ export const Header: React.FC<HeaderProps> = ({
   exportSuccess,
   exportSuccessFormat = null,
   lastExportFormat = 'pptx',
-  totalBatchCount,
-  onExportAllBatch,
-  onExportAllBatchZip,
-  isExportingAllBatch,
   isDarkMode = false,
   onToggleDarkMode,
   canUndo = false,
@@ -100,14 +91,12 @@ export const Header: React.FC<HeaderProps> = ({
   const [isThemesOpen, setIsThemesOpen] = React.useState(false);
   const [isFileMenuOpen, setIsFileMenuOpen] = React.useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = React.useState(false);
-  const [isBatchExportMenuOpen, setIsBatchExportMenuOpen] = React.useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
 
   const presetsRef = React.useRef<HTMLDivElement>(null);
   const themesRef = React.useRef<HTMLDivElement>(null);
   const fileMenuRef = React.useRef<HTMLDivElement>(null);
   const exportRef = React.useRef<HTMLDivElement>(null);
-  const batchExportRef = React.useRef<HTMLDivElement>(null);
 
   const projectInputRef = React.useRef<HTMLInputElement>(null);
   const mdInputRef = React.useRef<HTMLInputElement>(null);
@@ -127,9 +116,6 @@ export const Header: React.FC<HeaderProps> = ({
       }
       if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
         setIsExportMenuOpen(false);
-      }
-      if (batchExportRef.current && !batchExportRef.current.contains(e.target as Node)) {
-        setIsBatchExportMenuOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -585,46 +571,6 @@ export const Header: React.FC<HeaderProps> = ({
                   </div>
                   <kbd className="hidden sm:inline-block text-[10px] font-mono text-slate-400">Ctrl+P</kbd>
                 </button>
-
-                {totalBatchCount !== undefined && totalBatchCount > 1 && onExportAllBatch && (
-                  <div className="border-t border-slate-100 dark:border-slate-800 pt-1.5 mt-1.5">
-                    <div className="px-2.5 py-1 text-[10px] font-medium text-slate-400 uppercase tracking-wider">
-                      Batch Export ({totalBatchCount} Decks)
-                    </div>
-                    <button
-                      onClick={() => {
-                        setIsExportMenuOpen(false);
-                        onExportAllBatch('pptx');
-                      }}
-                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-left transition-colors cursor-pointer"
-                    >
-                      <FileDown className="w-3.5 h-3.5 text-indigo-500" />
-                      <span>All as PowerPoint (.pptx)</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setIsExportMenuOpen(false);
-                        onExportAllBatch('pdf');
-                      }}
-                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-left transition-colors cursor-pointer"
-                    >
-                      <FileType className="w-3.5 h-3.5 text-rose-500" />
-                      <span>All as Vector PDF (.pdf)</span>
-                    </button>
-                    {onExportAllBatchZip && (
-                      <button
-                        onClick={() => {
-                          setIsExportMenuOpen(false);
-                          onExportAllBatchZip();
-                        }}
-                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-left transition-colors cursor-pointer"
-                      >
-                        <Archive className="w-3.5 h-3.5 text-amber-500" />
-                        <span>All as ZIP Archive (.zip)</span>
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
             )}
           </div>

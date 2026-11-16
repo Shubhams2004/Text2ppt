@@ -15,6 +15,8 @@ interface ValidationStatusProps {
   hasErrors: boolean;
   slideCount: number;
   onSelectLine: (line: number) => void;
+  externalIsExpanded?: boolean;
+  onToggleExpand?: () => void;
 }
 
 export const ValidationStatus: React.FC<ValidationStatusProps> = ({
@@ -22,8 +24,16 @@ export const ValidationStatus: React.FC<ValidationStatusProps> = ({
   hasErrors,
   slideCount,
   onSelectLine,
+  externalIsExpanded,
+  onToggleExpand,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [internalExpanded, setInternalExpanded] = useState(false);
+  const isExpanded = externalIsExpanded !== undefined ? externalIsExpanded : internalExpanded;
+  const setIsExpanded = (val: boolean | ((prev: boolean) => boolean)) => {
+    const nextVal = typeof val === 'function' ? val(isExpanded) : val;
+    setInternalExpanded(nextVal);
+    if (onToggleExpand) onToggleExpand();
+  };
 
   const errorCount = issues.filter((i) => i.severity === 'error').length;
   const warningCount = issues.filter((i) => i.severity === 'warning').length;
@@ -64,6 +74,8 @@ export const ValidationStatus: React.FC<ValidationStatusProps> = ({
             <span>16:9 Widescreen</span>
             <span>·</span>
             <span>Ctrl+S to Export</span>
+            <span>·</span>
+            <span className="font-medium text-slate-600 dark:text-slate-300">Created by Shubham</span>
           </div>
 
           {issues.length > 0 && (

@@ -109,7 +109,6 @@ import {
   ComputedSlideLayout,
   DEFAULT_GEOMETRY,
 } from '../renderer/layoutSystem';
-import { BatchPresentationItem } from '../parser/batchParser';
 import { VisualPropertiesPanel } from './VisualPropertiesPanel';
 
 /**
@@ -342,15 +341,23 @@ export interface PreviewProps {
   activeSlideIndex: number;
   onSelectSlide: (index: number) => void;
   onUpdatePresentation?: (presentation: Presentation, commitToHistory?: boolean) => void;
-  batchItems?: BatchPresentationItem[];
-  selectedBatchIndex?: number;
-  onSelectBatchItem?: (index: number) => void;
   canUndo?: boolean;
   canRedo?: boolean;
   onUndo?: () => void;
   onRedo?: () => void;
   onExport?: (format: 'pptx' | 'pdf') => void;
   isExporting?: boolean;
+  externalZoom?: number;
+  onZoomChange?: (zoom: number) => void;
+  externalSnapToGrid?: boolean;
+  onToggleSnap?: () => void;
+  externalShowNotes?: boolean;
+  onToggleNotes?: () => void;
+  externalIsFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
+  showRulers?: boolean;
+  externalShowGrid?: boolean;
+  onSelectElementChange?: (element: SlideElement | null) => void;
 }
 
 export const Preview: React.FC<PreviewProps> = ({
@@ -359,27 +366,65 @@ export const Preview: React.FC<PreviewProps> = ({
   activeSlideIndex,
   onSelectSlide,
   onUpdatePresentation,
-  batchItems,
-  selectedBatchIndex = 0,
-  onSelectBatchItem,
   canUndo = false,
   canRedo = false,
   onUndo,
   onRedo,
   onExport,
   isExporting = false,
+  externalZoom,
+  onZoomChange,
+  externalSnapToGrid,
+  onToggleSnap,
+  externalShowNotes,
+  onToggleNotes,
+  externalIsFullscreen,
+  onToggleFullscreen,
+  showRulers = false,
+  externalShowGrid,
+  onSelectElementChange,
 }) => {
   const [viewMode, setViewMode] = useState<'single' | 'grid'>('single');
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [internalFullscreen, setInternalFullscreen] = useState(false);
+  const isFullscreen = externalIsFullscreen !== undefined ? externalIsFullscreen : internalFullscreen;
+  const setIsFullscreen = (val: boolean | ((prev: boolean) => boolean)) => {
+    const nextVal = typeof val === 'function' ? val(isFullscreen) : val;
+    setInternalFullscreen(nextVal);
+    if (onToggleFullscreen) onToggleFullscreen();
+  };
+
   const [replayCount, setReplayCount] = useState(0);
   const [isVisualEditing, setIsVisualEditing] = useState(false);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
-  const [snapToGrid, setSnapToGrid] = useState(true);
+
+  const [internalSnapToGrid, setInternalSnapToGrid] = useState(true);
+  const snapToGrid = externalSnapToGrid !== undefined ? externalSnapToGrid : internalSnapToGrid;
+  const setSnapToGrid = (val: boolean | ((prev: boolean) => boolean)) => {
+    const nextVal = typeof val === 'function' ? val(snapToGrid) : val;
+    setInternalSnapToGrid(nextVal);
+    if (onToggleSnap) onToggleSnap();
+  };
+
   const [gridSize] = useState(0.1); // 0.1 inch grid step
   const [activeGuides, setActiveGuides] = useState<{ v?: number; h?: number }>({});
   const [isShapeMenuOpen, setIsShapeMenuOpen] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState<number>(100);
+
+  const [internalZoomLevel, setInternalZoomLevel] = useState<number>(100);
+  const zoomLevel = externalZoom !== undefined ? externalZoom : internalZoomLevel;
+  const setZoomLevel = (val: number | ((prev: number) => number)) => {
+    const nextVal = typeof val === 'function' ? val(zoomLevel) : val;
+    setInternalZoomLevel(nextVal);
+    if (onZoomChange) onZoomChange(nextVal);
+  };
+
+  const [internalShowNotes, setInternalShowNotes] = useState(false);
+  const showPresenterNotes = externalShowNotes !== undefined ? externalShowNotes : internalShowNotes;
+  const setShowPresenterNotes = (val: boolean | ((prev: boolean) => boolean)) => {
+    const nextVal = typeof val === 'function' ? val(showPresenterNotes) : val;
+    setInternalShowNotes(nextVal);
+    if (onToggleNotes) onToggleNotes();
+  };
   const [showFilmstrip, setShowFilmstrip] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 768);
   const [isMobilePropertiesOpen, setIsMobilePropertiesOpen] = useState(false);
   const [isLayoutMenuOpen, setIsLayoutMenuOpen] = useState(false);
@@ -387,7 +432,6 @@ export const Preview: React.FC<PreviewProps> = ({
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
-  const [showPresenterNotes, setShowPresenterNotes] = useState(false);
 
   // Presenter rehearsal timer effect
   useEffect(() => {
@@ -422,7 +466,13 @@ export const Preview: React.FC<PreviewProps> = ({
   }, [activeSlideIndex]);
 
   // Selected element lookup
-  const selectedElement = currentSlide?.elements.find((el) => el.id === selectedElementId);
+  const selectedElement = currentSlide?.elements.find((el) => el.id === selectedElementId) || null;
+
+  useEffect(() => {
+    if (onSelectElementChange) {
+      onSelectElementChange(selectedElement);
+    }
+  }, [selectedElement, onSelectElementChange]);
 
   // Update a single element on current slide and push to canonical presentation
   const handleUpdateElement = useCallback(
@@ -996,25 +1046,6 @@ export const Preview: React.FC<PreviewProps> = ({
           </div>
         </div>
 
-        {/* Multi-Deck Selector if multiple presentations present */}
-        {batchItems && batchItems.length > 1 && (
-          <div className="hidden sm:flex items-center gap-1.5 bg-slate-200/80 dark:bg-slate-800 px-2 py-0.5 rounded-md text-xs font-medium">
-            <Layers className="w-3.5 h-3.5 text-indigo-500 flex-none" />
-            <select
-              value={selectedBatchIndex}
-              onChange={(e) => onSelectBatchItem?.(Number(e.target.value))}
-              aria-label="Select Presentation Deck"
-              className="bg-transparent border-none text-slate-800 dark:text-slate-200 font-semibold text-xs cursor-pointer focus:outline-none max-w-[140px] truncate"
-            >
-              {batchItems.map((item, idx) => (
-                <option key={item.id} value={idx} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
-                  {idx + 1}. {item.presentation.title || `Deck ${idx + 1}`}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
         {/* Center: Slide indicator pills & transition replay */}
         <div className="flex items-center gap-2">
           {activeTransition && activeTransition.style !== 'none' && !isVisualEditing && (
@@ -1467,9 +1498,23 @@ export const Preview: React.FC<PreviewProps> = ({
           ) : (
             // Single Slide Canvas Stage
             <div className="w-full max-w-4xl flex flex-col items-center">
+              {/* Optional Rulers for precision alignment */}
+              {showRulers && (
+                <div className="w-full h-5 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-end select-none text-[9px] text-slate-400 font-mono mb-1 rounded">
+                  {Array.from({ length: 11 }).map((_, i) => (
+                    <div key={i} className="flex-1 flex flex-col justify-end items-start border-l border-slate-300 dark:border-slate-700 h-full pl-0.5">
+                      <span className="leading-none pb-0.5">{i}"</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               {/* Slide Stage Container */}
               <div
-                className={`w-full relative aspect-[16/9] rounded-2xl overflow-hidden shadow-2xl shadow-slate-900/15 dark:shadow-black/50 ring-1 ring-slate-900/10 dark:ring-white/10 transition-all ${
+                className={`w-full relative ${
+                  currentSlide?.aspectRatio === '4:3' || presentation.aspectRatio === '4:3'
+                    ? 'aspect-[4/3]'
+                    : 'aspect-[16/9]'
+                } rounded-2xl overflow-hidden shadow-2xl shadow-slate-900/15 dark:shadow-black/50 ring-1 ring-slate-900/10 dark:ring-white/10 transition-all ${
                   isVisualEditing ? 'ring-2 ring-indigo-500/60' : ''
                 }`}
                 style={{
@@ -1505,6 +1550,7 @@ export const Preview: React.FC<PreviewProps> = ({
                         selectedElementId={selectedElementId}
                         inlineEditingId={inlineEditingId}
                         snapToGrid={snapToGrid}
+                        showGridOverlay={externalShowGrid}
                         gridSize={gridSize}
                         guides={activeGuides}
                         onSelectElement={(id) => {
@@ -2259,6 +2305,7 @@ interface SlideCanvasProps {
   selectedElementId?: string | null;
   inlineEditingId?: string | null;
   snapToGrid?: boolean;
+  showGridOverlay?: boolean;
   gridSize?: number;
   guides?: { v?: number; h?: number };
   onSelectElement?: (id: string | null) => void;
@@ -2282,6 +2329,7 @@ const SlideCanvas: React.FC<SlideCanvasProps> = ({
   selectedElementId = null,
   inlineEditingId = null,
   snapToGrid = true,
+  showGridOverlay,
   gridSize = 0.1,
   guides = {},
   onSelectElement,
@@ -2423,8 +2471,8 @@ const SlideCanvas: React.FC<SlideCanvasProps> = ({
       style={{
         backgroundColor: slide.background || theme.bgColor,
         color: theme.bodyColor,
-        backgroundImage: snapToGrid
-          ? 'radial-gradient(circle, rgba(99, 102, 241, 0.12) 1px, transparent 1px)'
+        backgroundImage: (showGridOverlay !== undefined ? showGridOverlay : snapToGrid)
+          ? 'radial-gradient(circle, rgba(99, 102, 241, 0.16) 1px, transparent 1px)'
           : undefined,
         backgroundSize: `${gridSize * 10 * (scale || 80)}px ${gridSize * 10 * (scale || 80)}px`,
       }}
@@ -2845,6 +2893,22 @@ const InteractiveElementItem: React.FC<InteractiveElementItemProps> = ({
                   <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
                     <polygon points="50,0 63,38 100,38 69,59 82,100 50,75 18,100 31,59 0,38 37,38" fill={fill} stroke={stroke} strokeWidth={strokeWidth} />
                   </svg>
+                ) : shape.shapeType === 'diamond' ? (
+                  <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <polygon points="50,0 100,50 50,100 0,50" fill={fill} stroke={stroke} strokeWidth={strokeWidth} />
+                  </svg>
+                ) : shape.shapeType === 'pentagon' ? (
+                  <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <polygon points="50,0 100,38 82,100 18,100 0,38" fill={fill} stroke={stroke} strokeWidth={strokeWidth} />
+                  </svg>
+                ) : shape.shapeType === 'hexagon' ? (
+                  <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <polygon points="25,0 75,0 100,50 75,100 25,100 0,50" fill={fill} stroke={stroke} strokeWidth={strokeWidth} />
+                  </svg>
+                ) : shape.shapeType === 'speech-bubble' || shape.shapeType === 'callout' ? (
+                  <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <path d="M5,5 H95 V65 H45 L20,95 L25,65 H5 Z" fill={fill} stroke={stroke} strokeWidth={strokeWidth} />
+                  </svg>
                 ) : (
                   <div
                     className="w-full h-full rounded border"
@@ -2858,14 +2922,21 @@ const InteractiveElementItem: React.FC<InteractiveElementItemProps> = ({
           (() => {
             const img = element as any;
             const src = img.src || img.url || element.content;
+            const flipTransform = `${img.flipH ? 'scaleX(-1)' : ''} ${img.flipV ? 'scaleY(-1)' : ''}`.trim();
+            const filterStr = `brightness(${img.brightness ?? 100}%) contrast(${img.contrast ?? 100}%) saturate(${img.saturation ?? 100}%) blur(${img.blur ?? 0}px)`;
+
             return (
               <div className="w-full h-full flex items-center justify-center overflow-hidden rounded">
                 {src ? (
                   <img
                     src={src}
                     alt={img.alt || 'Slide asset'}
-                    style={{ objectFit: (img.fit || 'contain') as any }}
-                    className="w-full h-full"
+                    style={{
+                      objectFit: (img.fit || 'contain') as any,
+                      transform: flipTransform || undefined,
+                      filter: filterStr,
+                    }}
+                    className="w-full h-full transition-all"
                   />
                 ) : (
                   <div className="w-full h-full border-2 border-dashed border-slate-300 dark:border-slate-700 flex flex-col items-center justify-center text-slate-400">
@@ -3010,7 +3081,9 @@ const InteractiveElementItem: React.FC<InteractiveElementItemProps> = ({
               fontSize: `${element.fontSize || 14}px`,
               fontWeight: element.bold ? 'bold' : 'normal',
               fontStyle: element.italic ? 'italic' : 'normal',
-              textDecoration: element.underline ? 'underline' : 'none',
+              textDecoration: `${element.underline ? 'underline' : ''} ${element.strikethrough ? 'line-through' : ''}`.trim() || 'none',
+              backgroundColor: element.highlightColor || undefined,
+              letterSpacing: element.letterSpacing ? `${element.letterSpacing}px` : undefined,
               color: element.color || theme.bodyColor,
               textAlign: (element.align || 'left') as any,
               lineHeight: element.lineSpacing || 1.15,
